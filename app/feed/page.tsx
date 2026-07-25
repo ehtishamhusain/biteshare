@@ -88,7 +88,6 @@ export default function FeedPage() {
   const fetchBundles = async () => {
     setLoading(true);
 
-    // ⚡ Direct query from food_bundles (no fragile client-side .reduce needed)
     const { data, error } = await supabase
       .from('food_bundles')
       .select('*, donor:profiles(organization_name, full_name)')
@@ -98,7 +97,6 @@ export default function FeedPage() {
     if (!error && data) {
       const processedBundles = data
         .map((bundle) => {
-          // Read quantity_remaining directly, fallback to initial quantity if null
           const remaining =
             bundle.quantity_remaining !== null && bundle.quantity_remaining !== undefined
               ? Number(bundle.quantity_remaining)
@@ -176,6 +174,10 @@ export default function FeedPage() {
 
     const totalPrice = hasBulkDiscount ? bulkTotalPrice : claimQty * pricePerUnit;
 
+    // 💰 Calculate 10% BiteShare Platform Fee and 90% Store Payout
+    const platformFee = totalPrice > 0 ? totalPrice * 0.10 : 0;
+    const donorPayout = totalPrice > 0 ? totalPrice * 0.90 : 0;
+
     setClaimingId(bundleId);
     setMessage(null);
 
@@ -204,12 +206,14 @@ export default function FeedPage() {
     // Generate random 4-digit PIN
     const generatedPin = Math.floor(1000 + Math.random() * 9000).toString();
 
-    // 1. Insert claim record
+    // 1. Insert claim record with financial commission breakdown
     const { error: claimError } = await supabase.from('claims').insert({
       bundle_id: bundleId,
       recipient_id: user.id,
       claimed_quantity: claimQty,
       total_price: totalPrice,
+      platform_fee: platformFee,   // ⚡ 10% Platform Commission
+      donor_payout: donorPayout,   // ⚡ 90% Net Donor Payout
       pickup_pin: generatedPin,
       status: 'PENDING',
     });

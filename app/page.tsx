@@ -4,6 +4,9 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { motion, AnimatePresence, Variants } from 'framer-motion';
 import { supabase } from '@/lib/supabase';
+import MissionSection from '@/components/MissionSection';
+import EcosystemSection from '@/components/EcosystemSection';
+import FounderNote from '@/components/FounderNote'; // 👈 1. Import FounderNote
 import NewsletterSection from '@/components/NewsletterSection';
 import {
   Utensils,
@@ -24,10 +27,10 @@ import {
 // Explicitly typed Animation Variants for zero TypeScript errors
 const fadeInUp: Variants = {
   hidden: { opacity: 0, y: 30 },
-  visible: { 
-    opacity: 1, 
-    y: 0, 
-    transition: { duration: 0.6, ease: 'easeOut' } 
+  visible: {
+    opacity: 1,
+    y: 0,
+    transition: { duration: 0.6, ease: 'easeOut' },
   },
 };
 
@@ -96,7 +99,6 @@ export default function Home() {
         {/* 🚀 Hero Section */}
         <section className="relative pt-12 pb-20 lg:pt-20 lg:pb-28 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 lg:gap-8 items-center">
-            
             {/* Hero Left Content */}
             <motion.div
               className="lg:col-span-7 space-y-8 text-center lg:text-left"
@@ -105,7 +107,10 @@ export default function Home() {
               variants={staggerContainer}
             >
               {/* Pulsing Pill Badge */}
-              <motion.div variants={fadeInUp} className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-emerald-100/80 border border-emerald-200 text-emerald-800 text-xs font-bold uppercase tracking-widest shadow-sm">
+              <motion.div
+                variants={fadeInUp}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-emerald-100/80 border border-emerald-200 text-emerald-800 text-xs font-bold uppercase tracking-widest shadow-sm"
+              >
                 <span className="relative flex h-2 w-2">
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-500 opacity-75"></span>
                   <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-600"></span>
@@ -115,7 +120,10 @@ export default function Home() {
               </motion.div>
 
               {/* Dynamic Headline */}
-              <motion.h1 variants={fadeInUp} className="text-4xl sm:text-6xl lg:text-7xl font-black tracking-tight leading-[1.1] text-slate-900">
+              <motion.h1
+                variants={fadeInUp}
+                className="text-4xl sm:text-6xl lg:text-7xl font-black tracking-tight leading-[1.1] text-slate-900"
+              >
                 Turn Surplus Food into{' '}
                 <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700">
                   Community Impact
@@ -123,12 +131,18 @@ export default function Home() {
               </motion.h1>
 
               {/* Sub-headline */}
-              <motion.p variants={fadeInUp} className="text-slate-600 text-base sm:text-xl font-normal leading-relaxed max-w-2xl mx-auto lg:mx-0">
+              <motion.p
+                variants={fadeInUp}
+                className="text-slate-600 text-base sm:text-xl font-normal leading-relaxed max-w-2xl mx-auto lg:mx-0"
+              >
                 Connecting local bakeries, restaurants, and grocery stores with community members and neighborhood shelters in real time.
               </motion.p>
 
               {/* Action Buttons */}
-              <motion.div variants={fadeInUp} className="flex flex-col sm:flex-row items-center justify-center lg:justify-start gap-4 pt-2">
+              <motion.div
+                variants={fadeInUp}
+                className="flex flex-col sm:flex-row items-center justify-center lg:justify-start gap-4 pt-2"
+              >
                 <Link
                   href="/feed"
                   className="w-full sm:w-auto px-8 py-4 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-sm sm:text-base rounded-2xl shadow-xl shadow-emerald-600/20 transition-all duration-300 hover:scale-[1.02] flex items-center justify-center gap-2 group"
@@ -136,7 +150,7 @@ export default function Home() {
                   <span>Explore Available Food</span>
                   <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
                 </Link>
-                
+
                 <Link
                   href="/signup"
                   className="w-full sm:w-auto px-8 py-4 bg-white hover:bg-slate-100 text-slate-800 font-bold text-sm sm:text-base rounded-2xl border border-slate-200 shadow-sm transition-all duration-300 hover:scale-[1.02] flex items-center justify-center gap-2"
@@ -147,7 +161,10 @@ export default function Home() {
               </motion.div>
 
               {/* Micro Trust Stats */}
-              <motion.div variants={fadeInUp} className="pt-4 flex items-center justify-center lg:justify-start gap-6 text-xs text-slate-500 border-t border-slate-200">
+              <motion.div
+                variants={fadeInUp}
+                className="pt-4 flex items-center justify-center lg:justify-start gap-6 text-xs text-slate-500 border-t border-slate-200"
+              >
                 <div className="flex items-center gap-2">
                   <CheckCircle2 className="w-4 h-4 text-emerald-600" />
                   <span className="font-medium">100% Free or Deep Discount</span>
@@ -177,7 +194,9 @@ export default function Home() {
                   </div>
                   {latestBundle && (
                     <span className="px-3 py-1 bg-amber-50 border border-amber-200 text-amber-700 rounded-full text-xs font-black">
-                      {latestBundle.price === 0 || !latestBundle.price ? '🎁 FREE' : `₹${latestBundle.price}`}
+                      {latestBundle.price === 0 || !latestBundle.price
+                        ? '🎁 FREE'
+                        : `₹${latestBundle.price}`}
                     </span>
                   )}
                 </div>
@@ -205,7 +224,7 @@ export default function Home() {
                           {latestBundle.title}
                         </h4>
                         <span className="bg-emerald-100 text-emerald-800 text-[11px] font-bold px-2.5 py-1 rounded-lg border border-emerald-200 flex-shrink-0">
-                          Qty: {latestBundle.quantity}
+                          Qty: {latestBundle.quantity_remaining ?? latestBundle.quantity}
                         </span>
                       </div>
 
@@ -267,7 +286,6 @@ export default function Home() {
                 </motion.div>
               </div>
             </motion.div>
-
           </div>
         </section>
 
@@ -282,35 +300,41 @@ export default function Home() {
               variants={staggerContainer}
             >
               <motion.div variants={fadeInUp} className="space-y-1">
-                <div className="text-3xl sm:text-5xl font-black text-emerald-600">
-                  12,500+
+                <div className="text-3xl sm:text-5xl font-black text-emerald-600">12,500+</div>
+                <div className="text-xs font-bold text-slate-500 uppercase tracking-widest">
+                  Meals Rescued
                 </div>
-                <div className="text-xs font-bold text-slate-500 uppercase tracking-widest">Meals Rescued</div>
               </motion.div>
 
               <motion.div variants={fadeInUp} className="space-y-1">
-                <div className="text-3xl sm:text-5xl font-black text-emerald-600">
-                  85+
+                <div className="text-3xl sm:text-5xl font-black text-emerald-600">85+</div>
+                <div className="text-xs font-bold text-slate-500 uppercase tracking-widest">
+                  Partner Businesses
                 </div>
-                <div className="text-xs font-bold text-slate-500 uppercase tracking-widest">Partner Businesses</div>
               </motion.div>
 
               <motion.div variants={fadeInUp} className="space-y-1">
-                <div className="text-3xl sm:text-5xl font-black text-emerald-600">
-                  15.2 Tons
+                <div className="text-3xl sm:text-5xl font-black text-emerald-600">15.2 Tons</div>
+                <div className="text-xs font-bold text-slate-500 uppercase tracking-widest">
+                  CO₂ Emissions Offset
                 </div>
-                <div className="text-xs font-bold text-slate-500 uppercase tracking-widest">CO₂ Emissions Offset</div>
               </motion.div>
 
               <motion.div variants={fadeInUp} className="space-y-1">
-                <div className="text-3xl sm:text-5xl font-black text-emerald-600">
-                  100%
+                <div className="text-3xl sm:text-5xl font-black text-emerald-600">100%</div>
+                <div className="text-xs font-bold text-slate-500 uppercase tracking-widest">
+                  Verified Quality
                 </div>
-                <div className="text-xs font-bold text-slate-500 uppercase tracking-widest">Verified Quality</div>
               </motion.div>
             </motion.div>
           </div>
         </section>
+
+        {/* 🌟 OUR MISSION SECTION */}
+        <MissionSection />
+
+        {/* 💰 FAIR BUSINESS MODEL & ECOSYSTEM SECTION */}
+        <EcosystemSection />
 
         {/* 🔄 Interactive "How It Works" Tab Switcher */}
         <section className="py-20 sm:py-28 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -435,9 +459,7 @@ export default function Home() {
         <section className="py-20 bg-white border-t border-slate-200">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="text-center max-w-2xl mx-auto mb-16 space-y-3">
-              <h2 className="text-3xl font-black text-slate-900">
-                Engineered for Speed & Impact
-              </h2>
+              <h2 className="text-3xl font-black text-slate-900">Engineered for Speed & Impact</h2>
               <p className="text-slate-600 text-sm">
                 Built with modern full-stack web standards for real-time synchronization.
               </p>
@@ -485,6 +507,8 @@ export default function Home() {
             </div>
           </div>
         </section>
+
+        <FounderNote /> {/* 👈 2. Placed right here */}
 
         {/* 📢 Newsletter Section */}
         <NewsletterSection />

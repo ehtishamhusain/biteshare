@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -21,6 +21,8 @@ import {
   Home as HomeIcon,
   Mail,
   AlertTriangle,
+  IndianRupee,
+  ChevronDown,
 } from 'lucide-react';
 
 export default function Navbar() {
@@ -30,7 +32,11 @@ export default function Navbar() {
   const [role, setRole] = useState<'DONOR' | 'RECIPIENT' | null>(null);
   const [loading, setLoading] = useState(true);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  
+
+  // 🔽 "More" Dropdown State & Ref (ONLY FOR DONORS)
+  const [moreDropdownOpen, setMoreDropdownOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
   // 🔐 Logout Confirmation Modal State
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
@@ -54,6 +60,19 @@ export default function Navbar() {
 
     return () => {
       authListener.subscription.unsubscribe();
+    };
+  }, []);
+
+  // 🖱️ Close dropdown when clicking outside
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setMoreDropdownOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
     };
   }, []);
 
@@ -83,7 +102,6 @@ export default function Navbar() {
     setLoading(false);
   };
 
-  // 🚪 Logout Logic: Redirects to Home Page ('/') upon confirmation
   const handleConfirmLogout = async () => {
     setLoggingOut(true);
     await supabase.auth.signOut();
@@ -92,29 +110,30 @@ export default function Navbar() {
     setMobileMenuOpen(false);
     setShowLogoutModal(false);
     setLoggingOut(false);
-    
-    // 🏠 Redirect to Home Page instead of Login
+
     router.push('/');
     router.refresh();
   };
+
+  const isMoreActive = ['/reviews', '/about', '/contact'].includes(pathname);
 
   return (
     <>
       <nav className="sticky top-0 z-50 bg-white/90 backdrop-blur-md border-b border-slate-200 shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
-            
             {/* Brand Logo */}
             <Link href="/" className="flex items-center gap-2.5 font-black text-xl text-slate-900 group">
               <div className="bg-emerald-600 text-white p-2 rounded-xl group-hover:scale-105 transition shadow-md shadow-emerald-600/20">
                 <Utensils className="w-5 h-5" />
               </div>
-              <span>Bite<span className="text-emerald-600">Share</span></span>
+              <span>
+                Bite<span className="text-emerald-600">Share</span>
+              </span>
             </Link>
 
             {/* Desktop Navigation Links */}
             <div className="hidden md:flex items-center gap-1 sm:gap-1.5">
-              
               {/* 🏠 Home Link */}
               <Link
                 href="/"
@@ -128,8 +147,8 @@ export default function Navbar() {
                 <span>Home</span>
               </Link>
 
-              {/* 🟢 DONOR SPECIFIC LINKS */}
-              {user && role === 'DONOR' && (
+              {/* 🟢 DONOR SPECIFIC LINKS (With "More" Dropdown) */}
+              {user && role === 'DONOR' ? (
                 <>
                   <Link
                     href="/donor/dashboard"
@@ -156,6 +175,18 @@ export default function Navbar() {
                   </Link>
 
                   <Link
+                    href="/donor/earnings"
+                    className={`px-3 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
+                      pathname === '/donor/earnings'
+                        ? 'bg-amber-500 text-white font-extrabold shadow-sm'
+                        : 'text-amber-800 bg-amber-50 hover:bg-amber-100 border border-amber-200'
+                    }`}
+                  >
+                    <IndianRupee className="w-4 h-4 text-amber-600" />
+                    <span>Earnings</span>
+                  </Link>
+
+                  <Link
                     href="/donor/analytics"
                     className={`px-3 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
                       pathname === '/donor/analytics'
@@ -166,74 +197,145 @@ export default function Navbar() {
                     <BarChart2 className="w-4 h-4 text-emerald-600" />
                     <span>Analytics</span>
                   </Link>
+
+                  {/* 🔽 "MORE" DROPDOWN MENU ONLY FOR DONORS */}
+                  <div className="relative" ref={dropdownRef}>
+                    <button
+                      type="button"
+                      onClick={() => setMoreDropdownOpen(!moreDropdownOpen)}
+                      className={`px-3 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1 ${
+                        isMoreActive
+                          ? 'bg-emerald-50 text-emerald-800 font-extrabold'
+                          : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                      }`}
+                    >
+                      <span>More</span>
+                      <ChevronDown
+                        className={`w-3.5 h-3.5 transition-transform duration-200 ${
+                          moreDropdownOpen ? 'rotate-180 text-emerald-600' : 'text-slate-400'
+                        }`}
+                      />
+                    </button>
+
+                    <AnimatePresence>
+                      {moreDropdownOpen && (
+                        <motion.div
+                          initial={{ opacity: 0, scale: 0.95, y: 8 }}
+                          animate={{ opacity: 1, scale: 1, y: 0 }}
+                          exit={{ opacity: 0, scale: 0.95, y: 8 }}
+                          transition={{ duration: 0.15 }}
+                          className="absolute right-0 mt-2 w-48 bg-white rounded-2xl border border-slate-200 shadow-xl py-2 z-50 space-y-0.5"
+                        >
+                          <Link
+                            href="/reviews"
+                            onClick={() => setMoreDropdownOpen(false)}
+                            className={`flex items-center gap-2.5 px-4 py-2.5 text-xs font-bold transition ${
+                              pathname === '/reviews'
+                                ? 'bg-emerald-50 text-emerald-800'
+                                : 'text-slate-700 hover:bg-slate-50'
+                            }`}
+                          >
+                            <Star className="w-4 h-4 text-amber-500" />
+                            <span>Reviews</span>
+                          </Link>
+
+                          <Link
+                            href="/about"
+                            onClick={() => setMoreDropdownOpen(false)}
+                            className={`flex items-center gap-2.5 px-4 py-2.5 text-xs font-bold transition ${
+                              pathname === '/about'
+                                ? 'bg-emerald-50 text-emerald-800'
+                                : 'text-slate-700 hover:bg-slate-50'
+                            }`}
+                          >
+                            <Info className="w-4 h-4 text-emerald-600" />
+                            <span>About Us</span>
+                          </Link>
+
+                          <Link
+                            href="/contact"
+                            onClick={() => setMoreDropdownOpen(false)}
+                            className={`flex items-center gap-2.5 px-4 py-2.5 text-xs font-bold transition ${
+                              pathname === '/contact'
+                                ? 'bg-emerald-50 text-emerald-800'
+                                : 'text-slate-700 hover:bg-slate-50'
+                            }`}
+                          >
+                            <Mail className="w-4 h-4 text-teal-600" />
+                            <span>Contact Us</span>
+                          </Link>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
+                </>
+              ) : (
+                /* 🔵 RECIPIENT & GUEST LINKS (Direct Links, No "More" Dropdown) */
+                <>
+                  <Link
+                    href="/feed"
+                    className={`px-3 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
+                      pathname === '/feed'
+                        ? 'bg-emerald-50 text-emerald-800 font-extrabold'
+                        : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                    }`}
+                  >
+                    <Sparkles className="w-4 h-4 text-emerald-600" />
+                    <span>Explore Feed</span>
+                  </Link>
+
+                  {user && role === 'RECIPIENT' && (
+                    <Link
+                      href="/my-claims"
+                      className={`px-3 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
+                        pathname === '/my-claims'
+                          ? 'bg-emerald-50 text-emerald-800 font-extrabold'
+                          : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                      }`}
+                    >
+                      <HeartHandshake className="w-4 h-4 text-emerald-600" />
+                      <span>My Claims</span>
+                    </Link>
+                  )}
+
+                  {/* Public Links Direct in Navbar for Guests & Recipients */}
+                  <Link
+                    href="/reviews"
+                    className={`px-3 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
+                      pathname === '/reviews'
+                        ? 'bg-emerald-50 text-emerald-800 font-extrabold'
+                        : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                    }`}
+                  >
+                    <Star className="w-4 h-4 text-emerald-600" />
+                    <span>Reviews</span>
+                  </Link>
+
+                  <Link
+                    href="/about"
+                    className={`px-3 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
+                      pathname === '/about'
+                        ? 'bg-emerald-50 text-emerald-800 font-extrabold'
+                        : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                    }`}
+                  >
+                    <Info className="w-4 h-4 text-emerald-600" />
+                    <span>About Us</span>
+                  </Link>
+
+                  <Link
+                    href="/contact"
+                    className={`px-3 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
+                      pathname === '/contact'
+                        ? 'bg-emerald-50 text-emerald-800 font-extrabold'
+                        : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                    }`}
+                  >
+                    <Mail className="w-4 h-4 text-emerald-600" />
+                    <span>Contact Us</span>
+                  </Link>
                 </>
               )}
-
-              {/* 🔵 RECIPIENT & GUEST LINKS */}
-              {(!user || role === 'RECIPIENT') && (
-                <Link
-                  href="/feed"
-                  className={`px-3 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
-                    pathname === '/feed'
-                      ? 'bg-emerald-50 text-emerald-800 font-extrabold'
-                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-                  }`}
-                >
-                  <Sparkles className="w-4 h-4 text-emerald-600" />
-                  <span>Explore Feed</span>
-                </Link>
-              )}
-
-              {user && role === 'RECIPIENT' && (
-                <Link
-                  href="/my-claims"
-                  className={`px-3 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
-                    pathname === '/my-claims'
-                      ? 'bg-emerald-50 text-emerald-800 font-extrabold'
-                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-                  }`}
-                >
-                  <HeartHandshake className="w-4 h-4 text-emerald-600" />
-                  <span>My Claims</span>
-                </Link>
-              )}
-
-              {/* Public Links */}
-              <Link
-                href="/reviews"
-                className={`px-3 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
-                  pathname === '/reviews'
-                    ? 'bg-emerald-50 text-emerald-800 font-extrabold'
-                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-                }`}
-              >
-                <Star className="w-4 h-4 text-emerald-600" />
-                <span>Reviews</span>
-              </Link>
-
-              <Link
-                href="/about"
-                className={`px-3 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
-                  pathname === '/about'
-                    ? 'bg-emerald-50 text-emerald-800 font-extrabold'
-                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-                }`}
-              >
-                <Info className="w-4 h-4 text-emerald-600" />
-                <span>About Us</span>
-              </Link>
-
-              <Link
-                href="/contact"
-                className={`px-3 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
-                  pathname === '/contact'
-                    ? 'bg-emerald-50 text-emerald-800 font-extrabold'
-                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-                }`}
-              >
-                <Mail className="w-4 h-4 text-emerald-600" />
-                <span>Contact Us</span>
-              </Link>
 
               {/* Auth Actions */}
               <div className="pl-2 flex items-center gap-2 border-l border-slate-200 ml-1">
@@ -276,7 +378,6 @@ export default function Navbar() {
                   </>
                 )}
               </div>
-
             </div>
 
             {/* Mobile Menu Button */}
@@ -288,7 +389,6 @@ export default function Navbar() {
                 {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
               </button>
             </div>
-
           </div>
         </div>
 
@@ -320,6 +420,13 @@ export default function Navbar() {
                   🛍️ Manage Pickups
                 </Link>
                 <Link
+                  href="/donor/earnings"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="block px-4 py-2.5 rounded-xl text-xs font-extrabold text-amber-800 bg-amber-50 hover:bg-amber-100 border border-amber-200"
+                >
+                  💰 Revenue & Earnings
+                </Link>
+                <Link
                   href="/donor/analytics"
                   onClick={() => setMobileMenuOpen(false)}
                   className="block px-4 py-2.5 rounded-xl text-xs font-bold text-slate-700 hover:bg-slate-50"
@@ -349,29 +456,31 @@ export default function Navbar() {
               </Link>
             )}
 
-            <Link
-              href="/reviews"
-              onClick={() => setMobileMenuOpen(false)}
-              className="block px-4 py-2.5 rounded-xl text-xs font-bold text-slate-700 hover:bg-slate-50"
-            >
-              ⭐ Reviews
-            </Link>
+            <div className="pt-2 border-t border-slate-100">
+              <Link
+                href="/reviews"
+                onClick={() => setMobileMenuOpen(false)}
+                className="block px-4 py-2 rounded-xl text-xs font-bold text-slate-700 hover:bg-slate-50"
+              >
+                ⭐ Reviews
+              </Link>
 
-            <Link
-              href="/about"
-              onClick={() => setMobileMenuOpen(false)}
-              className="block px-4 py-2.5 rounded-xl text-xs font-bold text-slate-700 hover:bg-slate-50"
-            >
-              ℹ️ About Us
-            </Link>
+              <Link
+                href="/about"
+                onClick={() => setMobileMenuOpen(false)}
+                className="block px-4 py-2 rounded-xl text-xs font-bold text-slate-700 hover:bg-slate-50"
+              >
+                ℹ️ About Us
+              </Link>
 
-            <Link
-              href="/contact"
-              onClick={() => setMobileMenuOpen(false)}
-              className="block px-4 py-2.5 rounded-xl text-xs font-bold text-slate-700 hover:bg-slate-50"
-            >
-              📩 Contact Us
-            </Link>
+              <Link
+                href="/contact"
+                onClick={() => setMobileMenuOpen(false)}
+                className="block px-4 py-2 rounded-xl text-xs font-bold text-slate-700 hover:bg-slate-50"
+              >
+                📩 Contact Us
+              </Link>
+            </div>
 
             <div className="pt-3 border-t border-slate-100 flex flex-col gap-2">
               {user ? (
@@ -421,8 +530,6 @@ export default function Navbar() {
       <AnimatePresence>
         {showLogoutModal && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center px-4">
-            
-            {/* Backdrop Blur Overlay */}
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -431,7 +538,6 @@ export default function Navbar() {
               className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm"
             />
 
-            {/* Modal Card */}
             <motion.div
               initial={{ opacity: 0, scale: 0.9, y: 15 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -439,7 +545,6 @@ export default function Navbar() {
               transition={{ type: 'spring', duration: 0.3 }}
               className="relative bg-white rounded-3xl p-6 sm:p-8 max-w-sm w-full shadow-2xl border border-slate-100 text-center space-y-5 z-10"
             >
-              {/* Alert Warning Icon */}
               <div className="w-14 h-14 bg-red-100 text-red-600 rounded-2xl flex items-center justify-center mx-auto shadow-sm">
                 <AlertTriangle className="w-7 h-7" />
               </div>
@@ -451,7 +556,6 @@ export default function Navbar() {
                 </p>
               </div>
 
-              {/* Action Buttons */}
               <div className="grid grid-cols-2 gap-3 pt-2">
                 <button
                   type="button"
@@ -471,7 +575,6 @@ export default function Navbar() {
                 </button>
               </div>
             </motion.div>
-
           </div>
         )}
       </AnimatePresence>
