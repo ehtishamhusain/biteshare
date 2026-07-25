@@ -4,14 +4,25 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion, Variants } from 'framer-motion';
 import { supabase } from '@/lib/supabase';
-import { Utensils, MapPin, Tag, IndianRupee, Sparkles, CheckCircle2, AlertCircle, Building } from 'lucide-react';
+import {
+  Utensils,
+  MapPin,
+  Tag,
+  IndianRupee,
+  Sparkles,
+  CheckCircle2,
+  AlertCircle,
+  Building,
+  Calculator,
+  Percent,
+} from 'lucide-react';
 
 const fadeInUp: Variants = {
   hidden: { opacity: 0, y: 20 },
-  visible: { 
-    opacity: 1, 
-    y: 0, 
-    transition: { duration: 0.5 } 
+  visible: {
+    opacity: 1,
+    y: 0,
+    transition: { duration: 0.5 },
   },
 };
 
@@ -27,8 +38,12 @@ export default function DonorDashboardPage() {
   const router = useRouter();
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  const [quantity, setQuantity] = useState('1');
-  const [price, setPrice] = useState('0');
+  const [quantity, setQuantity] = useState('10');
+
+  // 💰 Pricing States
+  const [pricePerItem, setPricePerItem] = useState('30');
+  const [totalPrice, setTotalPrice] = useState('220'); // Allows custom bulk discount!
+
   const [pickupWindowEnd, setPickupWindowEnd] = useState('');
   const [address, setAddress] = useState('');
   const [latitude, setLatitude] = useState('');
@@ -41,9 +56,29 @@ export default function DonorDashboardPage() {
     fetchDonorProfile();
   }, []);
 
+  // 🧮 Auto-suggest standard total, but allow custom editing
+  const handleQuantityChange = (newQty: string) => {
+    setQuantity(newQty);
+    const qty = parseInt(newQty) || 1;
+    setTotalPrice((parseFloat(pricePerItem || '0') * qty).toString());
+  };
+
+  const handlePricePerItemChange = (val: string) => {
+    setPricePerItem(val);
+    const qty = parseInt(quantity) || 1;
+    setTotalPrice((parseFloat(val || '0') * qty).toString());
+  };
+
+  // 🏷️ Donor can freely set any custom bulk discount price!
+  const handleTotalPriceChange = (val: string) => {
+    setTotalPrice(val);
+  };
+
   const fetchDonorProfile = async () => {
     setFetchingProfile(true);
-    const { data: { user } } = await supabase.auth.getUser();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
 
     if (user) {
       const { data: profile } = await supabase
@@ -59,7 +94,7 @@ export default function DonorDashboardPage() {
           profile.city,
           profile.state,
           profile.pincode,
-          profile.country
+          profile.country,
         ].filter(Boolean);
 
         if (addressParts.length > 0) {
@@ -79,7 +114,10 @@ export default function DonorDashboardPage() {
           setMessage({ text: '📍 Live GPS location attached successfully!', type: 'success' });
         },
         () => {
-          setMessage({ text: 'Unable to access GPS location. Address manually populated.', type: 'error' });
+          setMessage({
+            text: 'Unable to access GPS location. Address manually populated.',
+            type: 'error',
+          });
         }
       );
     }
@@ -90,7 +128,9 @@ export default function DonorDashboardPage() {
     setLoading(true);
     setMessage(null);
 
-    const { data: { user } } = await supabase.auth.getUser();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
 
     if (!user) {
       setMessage({ text: 'Please log in to publish surplus food bundles.', type: 'error' });
@@ -98,16 +138,23 @@ export default function DonorDashboardPage() {
       return;
     }
 
-    // 🕒 Convert local datetime input to proper ISO string with exact local timezone
-    const isoPickupEnd = pickupWindowEnd ? new Date(pickupWindowEnd).toISOString() : new Date().toISOString();
+    const isoPickupEnd = pickupWindowEnd
+      ? new Date(pickupWindowEnd).toISOString()
+      : new Date().toISOString();
+
+    const parsedQuantity = parseInt(quantity) || 1;
+    const parsedPricePerItem = parseFloat(pricePerItem) || 0;
+    const parsedTotalPrice = parseFloat(totalPrice) || 0;
 
     const { error } = await supabase.from('food_bundles').insert([
       {
         donor_id: user.id,
         title,
         description,
-        quantity: parseInt(quantity) || 1,
-        price: parseFloat(price) || 0,
+        quantity: parsedQuantity,
+        quantity_remaining: parsedQuantity,
+        price: parsedTotalPrice, // Bulk deal price for whole bundle
+        price_per_item: parsedPricePerItem, // Standard individual item price
         pickup_window_end: isoPickupEnd,
         address,
         latitude: latitude || '28.3670',
@@ -119,11 +166,15 @@ export default function DonorDashboardPage() {
     if (error) {
       setMessage({ text: 'Error publishing bundle: ' + error.message, type: 'error' });
     } else {
-      setMessage({ text: '🎉 Food bundle published successfully to the live feed!', type: 'success' });
+      setMessage({
+        text: '🎉 Food bundle published successfully to the live feed!',
+        type: 'success',
+      });
       setTitle('');
       setDescription('');
-      setQuantity('1');
-      setPrice('0');
+      setQuantity('10');
+      setPricePerItem('0');
+      setTotalPrice('0');
       setPickupWindowEnd('');
       setTimeout(() => {
         router.push('/donor/manage');
@@ -131,6 +182,13 @@ export default function DonorDashboardPage() {
     }
     setLoading(false);
   };
+
+  // 📊 Calculate live bulk discount metrics
+  const standardTotal = (parseFloat(pricePerItem) || 0) * (parseInt(quantity) || 1);
+  const customTotal = parseFloat(totalPrice) || 0;
+  const isDiscounted = customTotal > 0 && customTotal < standardTotal;
+  const discountAmount = standardTotal - customTotal;
+  const discountPercent = standardTotal > 0 ? Math.round((discountAmount / standardTotal) * 100) : 0;
 
   return (
     <div className="min-h-screen bg-slate-50 py-10 px-4 sm:px-6 lg:px-8">
@@ -141,15 +199,21 @@ export default function DonorDashboardPage() {
           animate="visible"
           variants={staggerContainer}
         >
-          <motion.div variants={fadeInUp} className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-100 text-emerald-800 text-xs font-bold uppercase tracking-wider border border-emerald-200">
+          <motion.div
+            variants={fadeInUp}
+            className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-100 text-emerald-800 text-xs font-bold uppercase tracking-wider border border-emerald-200"
+          >
             <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
             <span>Donor Publishing Station</span>
           </motion.div>
-          <motion.h1 variants={fadeInUp} className="text-3xl font-black text-slate-900 tracking-tight">
+          <motion.h1
+            variants={fadeInUp}
+            className="text-3xl font-black text-slate-900 tracking-tight"
+          >
             Publish Surplus Food Bundle
           </motion.h1>
           <motion.p variants={fadeInUp} className="text-slate-600 text-sm max-w-md mx-auto">
-            List your remaining bakery goods, prepared meals, or fresh produce for local pickup.
+            Set single item pricing or give recipients a special bulk discount for clearing the entire batch!
           </motion.p>
         </motion.div>
 
@@ -188,7 +252,7 @@ export default function DonorDashboardPage() {
                 required
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                placeholder="e.g., 5 Fresh Croissants & Artisanal Bread"
+                placeholder="e.g., 10 Fresh Personal Pizzas & Garlic Bread"
                 className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-emerald-500 outline-none text-sm text-slate-800 bg-slate-50/50 transition"
               />
             </div>
@@ -206,43 +270,89 @@ export default function DonorDashboardPage() {
               />
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">
-                  Quantity (Servings / Items)
-                </label>
-                <div className="relative">
-                  <input
-                    type="number"
-                    min="1"
-                    required
-                    value={quantity}
-                    onChange={(e) => setQuantity(e.target.value)}
-                    className="w-full px-4 py-3 pl-10 rounded-xl border border-slate-200 focus:ring-2 focus:ring-emerald-500 outline-none text-sm text-slate-800 bg-slate-50/50 transition"
-                  />
-                  <Tag className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">
-                  Price (Set 0 for Free Donation)
-                </label>
-                <div className="relative">
-                  <input
-                    type="number"
-                    min="0"
-                    required
-                    value={price}
-                    onChange={(e) => setPrice(e.target.value)}
-                    placeholder="0"
-                    className="w-full px-4 py-3 pl-10 rounded-xl border border-slate-200 focus:ring-2 focus:ring-emerald-500 outline-none text-sm text-slate-800 bg-slate-50/50 transition"
-                  />
-                  <IndianRupee className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-                </div>
+            {/* Total Items Input */}
+            <div>
+              <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">
+                Total Servings / Items Available
+              </label>
+              <div className="relative">
+                <input
+                  type="number"
+                  min="1"
+                  required
+                  value={quantity}
+                  onChange={(e) => handleQuantityChange(e.target.value)}
+                  placeholder="10"
+                  className="w-full px-4 py-3 pl-10 rounded-xl border border-slate-200 focus:ring-2 focus:ring-emerald-500 outline-none text-sm text-slate-800 bg-slate-50/50 transition"
+                />
+                <Tag className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
               </div>
             </div>
 
+            {/* 💲 FLEXIBLE BULK DISCOUNT PRICING SECTION */}
+            <div className="p-5 bg-slate-50 rounded-2xl border border-slate-200 space-y-3">
+              <div className="flex items-center justify-between border-b border-slate-200 pb-2.5">
+                <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-700">
+                  <Calculator className="w-4 h-4 text-emerald-600" />
+                  <span>Flexible Pricing & Bulk Offer</span>
+                </div>
+
+                {/* Discount Badge */}
+                {isDiscounted && (
+                  <span className="inline-flex items-center gap-1 bg-amber-100 text-amber-900 border border-amber-300 text-[11px] font-black px-2.5 py-0.5 rounded-full">
+                    <Percent className="w-3 h-3 text-amber-600" />
+                    <span>{discountPercent}% OFF Bulk Discount!</span>
+                  </span>
+                )}
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
+                {/* Price Per Item */}
+                <div>
+                  <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1">
+                    Standard Price Per Item (₹)
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.5"
+                      required
+                      value={pricePerItem}
+                      onChange={(e) => handlePricePerItemChange(e.target.value)}
+                      className="w-full px-4 py-2.5 pl-9 rounded-xl border border-slate-200 focus:ring-2 focus:ring-emerald-500 outline-none text-sm font-extrabold text-slate-800 bg-white"
+                    />
+                    <IndianRupee className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                  </div>
+                </div>
+
+                {/* Total Price for Whole Bundle (Freely Editable!) */}
+                <div>
+                  <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1">
+                    Offer Price for ALL {quantity || 1} Items (₹)
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="number"
+                      min="0"
+                      step="1"
+                      required
+                      value={totalPrice}
+                      onChange={(e) => handleTotalPriceChange(e.target.value)}
+                      className="w-full px-4 py-2.5 pl-9 rounded-xl border border-slate-200 focus:ring-2 focus:ring-emerald-500 outline-none text-sm font-extrabold text-slate-800 bg-white"
+                    />
+                    <IndianRupee className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                  </div>
+                </div>
+              </div>
+
+              <p className="text-[11px] text-slate-500 italic pt-1">
+                💡 Recipients can buy individual items at <span className="font-bold text-slate-800">₹{pricePerItem || 0}</span> each, or reserve all <span className="font-bold text-slate-800">{quantity}</span> items at once for <span className="font-bold text-emerald-700">₹{totalPrice || 0}</span>
+                {isDiscounted && ` (saving ₹${discountAmount}!)`}.
+              </p>
+            </div>
+
+            {/* Timing & Address Inputs */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">
