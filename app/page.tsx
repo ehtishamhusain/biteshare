@@ -6,7 +6,8 @@ import { motion, AnimatePresence, Variants } from 'framer-motion';
 import { supabase } from '@/lib/supabase';
 import MissionSection from '@/components/MissionSection';
 import EcosystemSection from '@/components/EcosystemSection';
-import FounderNote from '@/components/FounderNote'; // 👈 1. Import FounderNote
+import FaqSection from '@/components/FaqSection';
+import FounderNote from '@/components/FounderNote';
 import NewsletterSection from '@/components/NewsletterSection';
 import {
   Utensils,
@@ -508,7 +509,11 @@ export default function Home() {
           </div>
         </section>
 
-        <FounderNote /> {/* 👈 2. Placed right here */}
+        {/* ❓ FREQUENTLY ASKED QUESTIONS (FAQ) SECTION */}
+        <FaqSection />
+
+        {/* ✍️ FOUNDER'S PERSONAL MESSAGE */}
+        <FounderNote />
 
         {/* 📢 Newsletter Section */}
         <NewsletterSection />
