@@ -1,390 +1,308 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import { motion, Variants } from 'framer-motion';
 import { supabase } from '@/lib/supabase';
-import Navbar from '@/components/Navbar';
-import { 
-  MapPin, 
-  Package, 
-  Clock, 
-  PlusCircle, 
-  CheckCircle2, 
-  AlertCircle, 
-  IndianRupee, 
-  Gift, 
-  Tag, 
-  Building,
-  Navigation,
-  Globe
-} from 'lucide-react';
+import { Utensils, MapPin, Tag, IndianRupee, Sparkles, CheckCircle2, AlertCircle, Building } from 'lucide-react';
 
-export default function DonorDashboard() {
+const fadeInUp: Variants = {
+  hidden: { opacity: 0, y: 20 },
+  visible: { 
+    opacity: 1, 
+    y: 0, 
+    transition: { duration: 0.5 } 
+  },
+};
+
+const staggerContainer: Variants = {
+  hidden: { opacity: 0 },
+  visible: {
+    opacity: 1,
+    transition: { staggerChildren: 0.1 },
+  },
+};
+
+export default function DonorDashboardPage() {
+  const router = useRouter();
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [quantity, setQuantity] = useState('1');
-  const [pickupHours, setPickupHours] = useState('2');
-
-  // Structured Address State
-  const [streetAddress, setStreetAddress] = useState('');
-  const [city, setCity] = useState('');
-  const [stateName, setStateName] = useState('');
-  const [pincode, setPincode] = useState('');
-  const [country, setCountry] = useState('India');
-  
-  // Real GPS Coordinates
-  const [latitude, setLatitude] = useState<number | null>(null);
-  const [longitude, setLongitude] = useState<number | null>(null);
-  
-  // Pricing State
-  const [isFree, setIsFree] = useState<boolean>(true);
-  const [price, setPrice] = useState<number>(0);
-  
-  const [locationStatus, setLocationStatus] = useState<string>('');
+  const [price, setPrice] = useState('0');
+  const [pickupWindowEnd, setPickupWindowEnd] = useState('');
+  const [address, setAddress] = useState('');
+  const [latitude, setLatitude] = useState('');
+  const [longitude, setLongitude] = useState('');
   const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-  const [user, setUser] = useState<any>(null);
+  const [fetchingProfile, setFetchingProfile] = useState(true);
+  const [message, setMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
 
   useEffect(() => {
-    checkUserAndFetchProfile();
+    fetchDonorProfile();
   }, []);
 
-  const checkUserAndFetchProfile = async () => {
+  const fetchDonorProfile = async () => {
+    setFetchingProfile(true);
     const { data: { user } } = await supabase.auth.getUser();
+
     if (user) {
-      setUser(user);
-      
-      // Auto-prefill address breakdown from Donor Profile
       const { data: profile } = await supabase
         .from('profiles')
-        .select('street_address, city, state, pincode, country')
+        .select('*')
         .eq('id', user.id)
-        .single();
+        .maybeSingle();
 
       if (profile) {
-        if (profile.street_address) setStreetAddress(profile.street_address);
-        if (profile.city) setCity(profile.city);
-        if (profile.state) setStateName(profile.state);
-        if (profile.pincode) setPincode(profile.pincode);
-        if (profile.country) setCountry(profile.country);
+        const addressParts = [
+          profile.organization_name,
+          profile.street_address,
+          profile.city,
+          profile.state,
+          profile.pincode,
+          profile.country
+        ].filter(Boolean);
+
+        if (addressParts.length > 0) {
+          setAddress(addressParts.join(', '));
+        }
       }
-    } else {
-      window.location.href = '/login';
     }
+    setFetchingProfile(false);
   };
 
-  const handleGetLocation = () => {
-    setLocationStatus('Fetching live GPS coordinates...');
-    if ('geolocation' in navigator) {
+  const handleFetchLocation = () => {
+    if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         (position) => {
-          const lat = position.coords.latitude;
-          const lng = position.coords.longitude;
-          setLatitude(lat);
-          setLongitude(lng);
-          setLocationStatus(`📍 GPS Captured: (${lat.toFixed(4)}, ${lng.toFixed(4)})`);
+          setLatitude(position.coords.latitude.toString());
+          setLongitude(position.coords.longitude.toString());
+          setMessage({ text: '📍 Live GPS location attached successfully!', type: 'success' });
         },
-        (error) => {
-          console.error('Geolocation Error:', error);
-          setLatitude(null);
-          setLongitude(null);
-          setLocationStatus('❌ Could not fetch GPS location. Please allow location permissions in your browser.');
-        },
-        { enableHighAccuracy: true, timeout: 10000 }
+        () => {
+          setMessage({ text: 'Unable to access GPS location. Address manually populated.', type: 'error' });
+        }
       );
-    } else {
-      setLocationStatus('❌ Geolocation is not supported by your browser.');
     }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user) return;
-
-    if (latitude === null || longitude === null) {
-      setMessage({ 
-        type: 'error', 
-        text: '📍 Real GPS Location is required! Please click "Capture Live GPS Location" before publishing.' 
-      });
-      return;
-    }
-
     setLoading(true);
     setMessage(null);
 
-    const pickupEnd = new Date(Date.now() + parseInt(pickupHours) * 3600000).toISOString();
-    const finalPrice = isFree ? 0 : parseFloat(price.toString()) || 0;
-    const fullCombinedAddress = `${streetAddress}, ${city}, ${stateName} - ${pincode}, ${country}`;
+    const { data: { user } } = await supabase.auth.getUser();
+
+    if (!user) {
+      setMessage({ text: 'Please log in to publish surplus food bundles.', type: 'error' });
+      setLoading(false);
+      return;
+    }
+
+    // 🕒 Convert local datetime input to proper ISO string with exact local timezone
+    const isoPickupEnd = pickupWindowEnd ? new Date(pickupWindowEnd).toISOString() : new Date().toISOString();
 
     const { error } = await supabase.from('food_bundles').insert([
       {
         donor_id: user.id,
         title,
         description,
-        street_address: streetAddress,
-        city,
-        state: stateName,
-        pincode,
-        country,
-        address: fullCombinedAddress,
         quantity: parseInt(quantity) || 1,
-        price: finalPrice,
-        pickup_window_end: pickupEnd,
-        latitude: latitude,
-        longitude: longitude,
-        location: `POINT(${longitude} ${latitude})`,
+        price: parseFloat(price) || 0,
+        pickup_window_end: isoPickupEnd,
+        address,
+        latitude: latitude || '28.3670',
+        longitude: longitude || '79.4304',
         status: 'AVAILABLE',
       },
     ]);
 
-    setLoading(false);
-
     if (error) {
-      setMessage({ type: 'error', text: 'Failed to publish bundle: ' + error.message });
+      setMessage({ text: 'Error publishing bundle: ' + error.message, type: 'error' });
     } else {
-      setMessage({ type: 'success', text: '🎉 Surplus food bundle published successfully with your exact store address!' });
-      
-      // Reset non-location form fields
+      setMessage({ text: '🎉 Food bundle published successfully to the live feed!', type: 'success' });
       setTitle('');
       setDescription('');
       setQuantity('1');
-      setPrice(0);
-      setIsFree(true);
+      setPrice('0');
+      setPickupWindowEnd('');
+      setTimeout(() => {
+        router.push('/donor/manage');
+      }, 1500);
     }
+    setLoading(false);
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-800">
-      <Navbar />
+    <div className="min-h-screen bg-slate-50 py-10 px-4 sm:px-6 lg:px-8">
+      <div className="max-w-3xl mx-auto space-y-8">
+        <motion.div
+          className="text-center space-y-2"
+          initial="hidden"
+          animate="visible"
+          variants={staggerContainer}
+        >
+          <motion.div variants={fadeInUp} className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-100 text-emerald-800 text-xs font-bold uppercase tracking-wider border border-emerald-200">
+            <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
+            <span>Donor Publishing Station</span>
+          </motion.div>
+          <motion.h1 variants={fadeInUp} className="text-3xl font-black text-slate-900 tracking-tight">
+            Publish Surplus Food Bundle
+          </motion.h1>
+          <motion.p variants={fadeInUp} className="text-slate-600 text-sm max-w-md mx-auto">
+            List your remaining bakery goods, prepared meals, or fresh produce for local pickup.
+          </motion.p>
+        </motion.div>
 
-      <main className="max-w-3xl mx-auto px-4 sm:px-6 py-10">
-        <div className="bg-white p-6 sm:p-10 rounded-2xl border border-slate-200 shadow-sm space-y-6">
-          <div className="border-b border-slate-100 pb-4">
-            <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 flex items-center gap-2">
-              <PlusCircle className="w-7 h-7 text-green-600" />
-              Publish Surplus Food Bundle
-            </h1>
-            <p className="text-sm text-slate-500 mt-1">
-              List available surplus food items with detailed address information and pickup timers.
-            </p>
-          </div>
-
+        <motion.div
+          initial={{ opacity: 0, scale: 0.96 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 0.5, delay: 0.2 }}
+          className="bg-white p-6 sm:p-10 rounded-3xl border border-slate-200 shadow-sm"
+        >
           {message && (
-            <div className={`p-4 rounded-xl text-sm font-medium flex items-center gap-2 ${
-              message.type === 'success' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-            }`}>
-              {message.type === 'success' ? <CheckCircle2 className="w-5 h-5 shrink-0" /> : <AlertCircle className="w-5 h-5 shrink-0" />}
+            <motion.div
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className={`p-4 rounded-2xl mb-6 font-semibold text-sm border flex items-center gap-2 ${
+                message.type === 'success'
+                  ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                  : 'bg-red-50 text-red-800 border-red-200'
+              }`}
+            >
+              {message.type === 'success' ? (
+                <CheckCircle2 className="w-5 h-5 text-emerald-600 flex-shrink-0" />
+              ) : (
+                <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0" />
+              )}
               <span>{message.text}</span>
-            </div>
+            </motion.div>
           )}
 
           <form onSubmit={handleSubmit} className="space-y-6">
-            {/* Title */}
             <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1">Bundle Title</label>
+              <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">
+                Bundle Title
+              </label>
               <input
                 type="text"
+                required
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                placeholder="e.g. 10 Samosa & Pastry Box"
-                className="w-full p-3 border rounded-xl border-slate-300 focus:ring-2 focus:ring-green-500 outline-none text-sm"
-                required
+                placeholder="e.g., 5 Fresh Croissants & Artisanal Bread"
+                className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-emerald-500 outline-none text-sm text-slate-800 bg-slate-50/50 transition"
               />
             </div>
 
-            {/* Address Breakdown */}
-            <div className="space-y-3 p-4 bg-slate-50 border border-slate-200 rounded-xl">
-              <label className="block text-xs font-extrabold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
-                <MapPin className="w-4 h-4 text-green-600" /> Pickup Store Address Breakdown
-              </label>
-
-              <div>
-                <input
-                  type="text"
-                  value={streetAddress}
-                  onChange={(e) => setStreetAddress(e.target.value)}
-                  placeholder="Street Address / Landmark (e.g. Gupta Sweet, Near Hartmann College)"
-                  className="w-full p-2.5 border rounded-lg border-slate-300 focus:ring-2 focus:ring-green-500 outline-none text-sm bg-white"
-                  required
-                />
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <input
-                  type="text"
-                  value={city}
-                  onChange={(e) => setCity(e.target.value)}
-                  placeholder="City / District (e.g. Bareilly)"
-                  className="w-full p-2.5 border rounded-lg border-slate-300 focus:ring-2 focus:ring-green-500 outline-none text-sm bg-white"
-                  required
-                />
-
-                <input
-                  type="text"
-                  value={stateName}
-                  onChange={(e) => setStateName(e.target.value)}
-                  placeholder="State (e.g. Uttar Pradesh)"
-                  className="w-full p-2.5 border rounded-lg border-slate-300 focus:ring-2 focus:ring-green-500 outline-none text-sm bg-white"
-                  required
-                />
-
-                <input
-                  type="text"
-                  value={pincode}
-                  onChange={(e) => setPincode(e.target.value)}
-                  placeholder="Pincode (e.g. 243001)"
-                  className="w-full p-2.5 border rounded-lg border-slate-300 focus:ring-2 focus:ring-green-500 outline-none text-sm bg-white"
-                  required
-                />
-
-                {/* Text input format for Country */}
-                <div className="relative">
-                  <Globe className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
-                  <input
-                    type="text"
-                    value={country}
-                    onChange={(e) => setCountry(e.target.value)}
-                    placeholder="Country (e.g. India)"
-                    className="w-full pl-9 pr-3 py-2.5 border rounded-lg border-slate-300 focus:ring-2 focus:ring-green-500 outline-none text-sm bg-white"
-                    required
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Description */}
             <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1">Description (Optional)</label>
+              <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">
+                Description (Optional)
+              </label>
               <textarea
-                rows={2}
+                rows={3}
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                placeholder="e.g. Freshly made snacks, best picked up within 2 hours."
-                className="w-full p-3 border rounded-xl border-slate-300 focus:ring-2 focus:ring-green-500 outline-none text-sm"
+                placeholder="Briefly describe dietary details, packaging, or allergen info..."
+                className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-emerald-500 outline-none text-sm text-slate-800 bg-slate-50/50 transition"
               />
             </div>
 
-            {/* Quantity & Pickup Window */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1">Quantity (Bundles)</label>
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">
+                  Quantity (Servings / Items)
+                </label>
                 <div className="relative">
-                  <Package className="w-5 h-5 text-slate-400 absolute left-3 top-3" />
                   <input
                     type="number"
                     min="1"
+                    required
                     value={quantity}
                     onChange={(e) => setQuantity(e.target.value)}
-                    className="w-full pl-10 pr-3 py-2.5 border rounded-xl border-slate-300 focus:ring-2 focus:ring-green-500 outline-none text-sm"
-                    required
+                    className="w-full px-4 py-3 pl-10 rounded-xl border border-slate-200 focus:ring-2 focus:ring-emerald-500 outline-none text-sm text-slate-800 bg-slate-50/50 transition"
                   />
+                  <Tag className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1">Pickup Deadline (Hours)</label>
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">
+                  Price (Set 0 for Free Donation)
+                </label>
                 <div className="relative">
-                  <Clock className="w-5 h-5 text-slate-400 absolute left-3 top-3" />
-                  <select
-                    value={pickupHours}
-                    onChange={(e) => setPickupHours(e.target.value)}
-                    className="w-full pl-10 pr-3 py-2.5 border rounded-xl border-slate-300 focus:ring-2 focus:ring-green-500 outline-none text-sm bg-white"
-                  >
-                    <option value="1">1 Hour</option>
-                    <option value="2">2 Hours</option>
-                    <option value="3">3 Hours</option>
-                    <option value="4">4 Hours</option>
-                  </select>
+                  <input
+                    type="number"
+                    min="0"
+                    required
+                    value={price}
+                    onChange={(e) => setPrice(e.target.value)}
+                    placeholder="0"
+                    className="w-full px-4 py-3 pl-10 rounded-xl border border-slate-200 focus:ring-2 focus:ring-emerald-500 outline-none text-sm text-slate-800 bg-slate-50/50 transition"
+                  />
+                  <IndianRupee className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
                 </div>
               </div>
             </div>
 
-            {/* Listing Type & Price Selection */}
-            <div className="space-y-2 pt-2 border-t border-slate-100">
-              <label className="block text-xs font-bold uppercase tracking-wider text-slate-600">Listing Type & Pricing</label>
-              <div className="grid grid-cols-2 gap-3 mb-2">
-                <button
-                  type="button"
-                  onClick={() => { setIsFree(true); setPrice(0); }}
-                  className={`py-2.5 px-4 rounded-xl font-semibold text-sm border flex items-center justify-center gap-2 transition ${
-                    isFree 
-                      ? 'bg-green-600 text-white border-green-600 shadow-sm' 
-                      : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
-                  }`}
-                >
-                  <Gift className="w-4 h-4" /> Free Donation (₹0)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setIsFree(false)}
-                  className={`py-2.5 px-4 rounded-xl font-semibold text-sm border flex items-center justify-center gap-2 transition ${
-                    !isFree 
-                      ? 'bg-green-600 text-white border-green-600 shadow-sm' 
-                      : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
-                  }`}
-                >
-                  <Tag className="w-4 h-4" /> Discounted Sale
-                </button>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">
+                  Pickup Window Closes At
+                </label>
+                <input
+                  type="datetime-local"
+                  required
+                  value={pickupWindowEnd}
+                  onChange={(e) => setPickupWindowEnd(e.target.value)}
+                  className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-emerald-500 outline-none text-sm text-slate-800 bg-slate-50/50 transition"
+                />
               </div>
 
-              {!isFree && (
-                <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl space-y-2">
-                  <label className="block text-xs font-semibold text-amber-900 uppercase tracking-wider">
-                    Discounted Price per Bundle (₹)
+              <div>
+                <div className="flex justify-between items-center mb-1.5">
+                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-500">
+                    Store Pickup Address
                   </label>
-                  <div className="relative">
-                    <IndianRupee className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
-                    <input
-                      type="number"
-                      step="5"
-                      min="10"
-                      value={price}
-                      onChange={(e) => setPrice(parseFloat(e.target.value) || 0)}
-                      placeholder="e.g. 99"
-                      className="w-full pl-9 pr-3 py-2 border rounded-lg border-slate-300 focus:ring-2 focus:ring-green-500 outline-none text-sm bg-white"
-                      required={!isFree}
-                    />
-                  </div>
+                  <span className="text-[10px] text-emerald-700 font-bold uppercase tracking-wider">
+                    {fetchingProfile ? 'Fetching profile...' : 'Auto-filled from profile'}
+                  </span>
                 </div>
-              )}
+                <div className="relative">
+                  <input
+                    type="text"
+                    required
+                    value={address}
+                    onChange={(e) => setAddress(e.target.value)}
+                    placeholder="Shop #12, Civil Lines, Bareilly, UP, 243001, India"
+                    className="w-full px-4 py-3 pl-10 rounded-xl border border-slate-200 focus:ring-2 focus:ring-emerald-500 outline-none text-sm text-slate-800 bg-slate-50/50 transition"
+                  />
+                  <Building className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                </div>
+              </div>
             </div>
 
-            {/* Geolocation Input */}
-            <div className="pt-2 border-t border-slate-100">
-              <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-2">
-                GPS Location Tagging <span className="text-red-500">*</span>
-              </label>
+            <div className="pt-2 flex items-center justify-between">
               <button
                 type="button"
-                onClick={handleGetLocation}
-                className={`w-full border py-2.5 rounded-xl text-sm font-medium transition flex items-center justify-center gap-2 ${
-                  latitude !== null 
-                    ? 'bg-green-50 border-green-300 text-green-800' 
-                    : 'bg-slate-100 border-slate-300 text-slate-700 hover:bg-slate-200'
-                }`}
+                onClick={handleFetchLocation}
+                className="inline-flex items-center gap-2 text-xs font-bold text-emerald-700 hover:text-emerald-800 bg-emerald-50 px-3.5 py-2.5 rounded-xl border border-emerald-200 transition hover:bg-emerald-100"
               >
-                <MapPin className="w-4 h-4 text-green-600" /> 
-                {latitude !== null ? 'Refresh Live GPS Location' : 'Capture Live GPS Location'}
+                <MapPin className="w-4 h-4" />
+                <span>Attach Current GPS Location</span>
               </button>
-              {locationStatus && (
-                <p className={`text-xs mt-2 font-medium text-center ${
-                  latitude !== null ? 'text-green-700' : 'text-amber-600'
-                }`}>
-                  {locationStatus}
-                </p>
-              )}
             </div>
 
-            {/* Submit Button */}
-            <button
+            <motion.button
+              whileHover={{ scale: 1.01 }}
+              whileTap={{ scale: 0.99 }}
               type="submit"
               disabled={loading}
-              className="w-full bg-green-600 text-white py-3.5 rounded-xl font-bold hover:bg-green-700 transition shadow-md disabled:opacity-50 text-sm"
+              className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold py-3.5 px-6 rounded-2xl transition shadow-md text-sm disabled:opacity-50"
             >
-              {loading ? 'Publishing Bundle...' : 'Publish Surplus Bundle'}
-            </button>
+              {loading ? 'Publishing Bundle...' : 'Publish to Live Feed'}
+            </motion.button>
           </form>
-        </div>
-      </main>
+        </motion.div>
+      </div>
     </div>
   );
 }

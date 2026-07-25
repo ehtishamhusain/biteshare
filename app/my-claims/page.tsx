@@ -1,26 +1,43 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import { motion, Variants } from 'framer-motion';
 import { supabase } from '@/lib/supabase';
-import Navbar from '@/components/Navbar';
-import { QRCodeSVG } from 'qrcode.react';
-import { 
-  PackageCheck, 
-  MapPin, 
-  Clock, 
-  Tag, 
-  Gift, 
-  CheckCircle2, 
-  ShoppingBag,
+import {
+  Utensils,
+  MapPin,
+  Clock,
+  ShieldCheck,
+  RefreshCw,
+  Sparkles,
+  Building,
+  Tag,
   AlertCircle,
-  QrCode,
-  KeyRound
+  CheckCircle2,
 } from 'lucide-react';
 
+const fadeInUp: Variants = {
+  hidden: { opacity: 0, y: 20 },
+  visible: {
+    opacity: 1,
+    y: 0,
+    transition: { duration: 0.4 },
+  },
+};
+
+const staggerContainer: Variants = {
+  hidden: { opacity: 0 },
+  visible: {
+    opacity: 1,
+    transition: { staggerChildren: 0.1 },
+  },
+};
+
 export default function MyClaimsPage() {
+  const router = useRouter();
   const [claims, setClaims] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
     fetchMyClaims();
@@ -28,185 +45,170 @@ export default function MyClaimsPage() {
 
   const fetchMyClaims = async () => {
     setLoading(true);
-    setErrorMessage(null);
-
-    const { data: { user } } = await supabase.auth.getUser();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
 
     if (!user) {
-      window.location.href = '/login';
+      router.push('/login');
       return;
     }
 
-    try {
-      // 1. Fetch claims for logged-in recipient
-      const { data: claimsData, error: claimsError } = await supabase
-        .from('claims')
-        .select('*')
-        .eq('recipient_id', user.id)
-        .order('created_at', { ascending: false });
+    // Fetch claims made by this recipient with bundle and donor details
+    const { data, error } = await supabase
+      .from('claims')
+      .select(`
+        *,
+        bundle:food_bundles (
+          id,
+          title,
+          description,
+          quantity,
+          price,
+          address,
+          pickup_window_end,
+          donor:profiles (
+            organization_name,
+            full_name,
+            phone
+          )
+        )
+      `)
+      .eq('recipient_id', user.id)
+      .order('created_at', { ascending: false });
 
-      if (claimsError) {
-        setErrorMessage(claimsError.message);
-        setLoading(false);
-        return;
-      }
-
-      if (!claimsData || claimsData.length === 0) {
-        setClaims([]);
-        setLoading(false);
-        return;
-      }
-
-      // 2. Fetch corresponding bundle details
-      const bundleIds = claimsData.map((c) => c.bundle_id).filter(Boolean);
-
-      const { data: bundlesData } = await supabase
-        .from('food_bundles')
-        .select('*')
-        .in('id', bundleIds);
-
-      // 3. Map bundle data onto claims array
-      const bundlesMap = new Map((bundlesData || []).map((b) => [b.id, b]));
-      const formattedClaims = claimsData.map((claim) => ({
-        ...claim,
-        food_bundles: bundlesMap.get(claim.bundle_id) || null,
-      }));
-
-      setClaims(formattedClaims);
-    } catch (err: any) {
-      setErrorMessage(err.message || 'Failed to load claims.');
-    } finally {
-      setLoading(false);
+    if (!error && data) {
+      setClaims(data);
     }
+    setLoading(false);
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-800">
-      <Navbar />
-
-      <main className="max-w-4xl mx-auto px-4 sm:px-6 py-10 space-y-6">
-        <div className="bg-white p-6 sm:p-8 rounded-2xl border border-slate-200 shadow-sm">
-          <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 flex items-center gap-2">
-            <PackageCheck className="w-7 h-7 text-green-600" /> My Food Reservations
-          </h1>
-          <p className="text-sm text-slate-500 mt-1">
-            Show your QR Code or 4-Digit Pickup PIN to the donor staff upon arrival.
-          </p>
-        </div>
-
-        {errorMessage && (
-          <div className="p-4 bg-red-100 border border-red-300 text-red-800 rounded-xl text-sm font-medium flex items-center gap-2">
-            <AlertCircle className="w-5 h-5 shrink-0" />
-            <span>{errorMessage}</span>
+    <div className="min-h-screen bg-slate-50 py-10 px-4 sm:px-6 lg:px-8">
+      <div className="max-w-5xl mx-auto space-y-8">
+        {/* Animated Page Header */}
+        <motion.div
+          initial={{ opacity: 0, y: -15 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5 }}
+          className="space-y-2"
+        >
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-100 text-emerald-800 text-xs font-bold uppercase tracking-wider border border-emerald-200">
+            <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
+            <span>Active Reservations</span>
           </div>
-        )}
+          <h1 className="text-3xl font-black text-slate-900 tracking-tight">
+            My Claimed Food Bundles
+          </h1>
+          <p className="text-slate-600 text-sm">
+            Show your 4-Digit Security PIN or QR Code at the store counter to collect your fresh surplus food.
+          </p>
+        </motion.div>
 
         {loading ? (
-          <div className="text-center py-20 text-slate-500 text-sm">
-            Loading your food reservations...
+          <div className="bg-white rounded-3xl p-12 text-center border border-slate-200 shadow-sm flex flex-col items-center justify-center">
+            <RefreshCw className="w-8 h-8 animate-spin text-emerald-600 mb-3" />
+            <p className="text-slate-500 text-sm">Loading your reservations...</p>
           </div>
         ) : claims.length === 0 ? (
-          <div className="bg-white p-12 text-center rounded-2xl border border-slate-200 text-slate-500 space-y-3">
-            <ShoppingBag className="w-12 h-12 text-slate-300 mx-auto" />
-            <p className="font-semibold text-slate-700">You haven't claimed any food bundles yet.</p>
-            <a 
-              href="/feed" 
-              className="inline-block bg-green-600 text-white px-5 py-2.5 rounded-xl text-xs font-semibold hover:bg-green-700 transition mt-2"
-            >
-              Browse Surplus Feed
-            </a>
-          </div>
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="bg-white rounded-3xl p-12 text-center border border-slate-200 shadow-sm max-w-lg mx-auto space-y-3"
+          >
+            <Utensils className="w-12 h-12 text-slate-300 mx-auto" />
+            <h3 className="text-lg font-bold text-slate-800">No food claims found</h3>
+            <p className="text-slate-500 text-sm">
+              You haven't reserved any surplus food bundles yet. Visit the Explore Feed to find fresh food near you!
+            </p>
+          </motion.div>
         ) : (
-          <div className="space-y-6">
+          <motion.div
+            className="space-y-6"
+            initial="hidden"
+            animate="visible"
+            variants={staggerContainer}
+          >
             {claims.map((claim) => {
-              const bundle = claim.food_bundles;
-              if (!bundle) return null;
-
-              const isCompleted = claim.status === 'COMPLETED' || bundle.status === 'COMPLETED';
-              const formattedPrice = bundle.price === 0 || !bundle.price 
-                ? '🎁 FREE' 
-                : `₹${Number(bundle.price).toFixed(0)}`;
+              const bundle = claim.bundle;
+              const donor = bundle?.donor;
+              const storeName = donor?.organization_name || donor?.full_name || 'Partner Store';
 
               return (
-                <div 
-                  key={claim.id} 
-                  className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-5"
+                <motion.div
+                  key={claim.id}
+                  variants={fadeInUp}
+                  whileHover={{ y: -3 }}
+                  className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-200 shadow-sm transition flex flex-col md:flex-row justify-between items-start md:items-center gap-6"
                 >
-                  <div className="flex justify-between items-start gap-2 border-b border-slate-100 pb-3">
-                    <div>
-                      <h3 className="font-bold text-slate-900 text-lg">{bundle.title}</h3>
-                      <span className={`inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full mt-1 ${
-                        isCompleted ? 'bg-slate-100 text-slate-700' : 'bg-green-50 text-green-700'
-                      }`}>
-                        <CheckCircle2 className="w-3.5 h-3.5" /> 
-                        {isCompleted ? 'Pickup Completed' : 'Reserved & Ready for Pickup'}
+                  <div className="space-y-3 flex-grow">
+                    <div className="flex items-center gap-2">
+                      <span
+                        className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${
+                          claim.status === 'COMPLETED'
+                            ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                            : 'bg-amber-100 text-amber-800 border border-amber-200'
+                        }`}
+                      >
+                        {claim.status === 'COMPLETED' ? 'Picked Up & Completed' : 'Pending Counter Pickup'}
+                      </span>
+                      <span className="font-black text-sm text-slate-900">
+                        {bundle?.price === 0 || !bundle?.price ? '🎁 FREE' : `₹${bundle?.price}`}
                       </span>
                     </div>
 
-                    <span className={`text-xs font-extrabold px-3 py-1 rounded-full flex items-center gap-1 ${
-                      bundle.price === 0 || !bundle.price
-                        ? 'bg-green-100 text-green-800'
-                        : 'bg-amber-100 text-amber-900'
-                    }`}>
-                      {bundle.price === 0 || !bundle.price ? <Gift className="w-3.5 h-3.5" /> : <Tag className="w-3.5 h-3.5" />}
-                      {formattedPrice}
-                    </span>
-                  </div>
+                    <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-700">
+                      <Building className="w-3.5 h-3.5" />
+                      <span>{storeName}</span>
+                    </div>
 
-                  {/* QR Verification Handshake Box */}
-                  {!isCompleted && (
-                    <div className="bg-slate-900 text-white p-5 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-6 shadow-inner">
-                      <div className="space-y-2 text-center sm:text-left">
-                        <div className="inline-flex items-center gap-1.5 text-xs font-bold text-green-400 bg-green-950/80 px-3 py-1 rounded-full border border-green-800">
-                          <QrCode className="w-3.5 h-3.5" /> Store Pickup Pass
-                        </div>
-                        <p className="text-xs text-slate-300">
-                          Show this QR code or PIN to the donor staff at checkout:
-                        </p>
-                        <div className="pt-1 flex items-center gap-2 justify-center sm:justify-start">
-                          <KeyRound className="w-5 h-5 text-amber-400" />
-                          <span className="text-2xl font-black tracking-widest text-amber-400 font-mono">
-                            {claim.pickup_pin || '1234'}
-                          </span>
-                        </div>
+                    <h3 className="text-xl font-bold text-slate-900">{bundle?.title}</h3>
+                    <p className="text-slate-600 text-xs line-clamp-2">
+                      {bundle?.description || 'Surplus food reserved for pickup.'}
+                    </p>
+
+                    <div className="pt-2 border-t border-slate-100 space-y-1.5 text-xs text-slate-500">
+                      <div className="flex items-start gap-1.5">
+                        <MapPin className="w-4 h-4 text-emerald-600 flex-shrink-0 mt-0.5" />
+                        <span>{bundle?.address || 'Address provided by donor'}</span>
                       </div>
-
-                      {/* QR Code Graphic */}
-                      <div className="bg-white p-3 rounded-xl shadow-md shrink-0">
-                        <QRCodeSVG 
-                          value={claim.pickup_pin ? `BITESHARE-PIN:${claim.pickup_pin}` : claim.id} 
-                          size={110} 
-                        />
+                      <div className="flex items-center gap-1.5">
+                        <Clock className="w-4 h-4 text-amber-600 flex-shrink-0" />
+                        <span>
+                          Closes:{' '}
+                          {bundle?.pickup_window_end
+                            ? new Date(bundle.pickup_window_end).toLocaleTimeString([], {
+                                hour: '2-digit',
+                                minute: '2-digit',
+                                hour12: true,
+                              })
+                            : 'N/A'}
+                        </span>
                       </div>
                     </div>
-                  )}
-
-                  {/* Pickup Address */}
-                  {bundle.address && (
-                    <div className="bg-slate-50 p-3 rounded-xl border border-slate-100 space-y-1">
-                      <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Store Location</p>
-                      <p className="text-sm font-semibold text-slate-800 flex items-center gap-1.5">
-                        <MapPin className="w-4 h-4 text-green-600 shrink-0" />
-                        <span>{bundle.address}</span>
-                      </p>
-                    </div>
-                  )}
-
-                  {/* Details */}
-                  <div className="flex flex-wrap gap-4 text-xs font-medium text-slate-600 pt-1">
-                    <div className="flex items-center gap-1">
-                      <Clock className="w-4 h-4 text-slate-400" />
-                      <span>
-                        Pickup Deadline: <strong>{new Date(bundle.pickup_window_end).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</strong>
-                      </span>
-                    </div>
                   </div>
-                </div>
+
+                  {/* 🔑 Security Verification PIN Box */}
+                  <div className="bg-slate-50 p-5 rounded-2xl border border-slate-200 text-center w-full md:w-auto min-w-[220px] space-y-2">
+                    <div className="flex items-center justify-center gap-1.5 text-xs font-bold text-slate-600">
+                      <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                      <span>Counter Pickup PIN</span>
+                    </div>
+
+                    <div className="text-3xl font-black font-mono tracking-widest text-emerald-700 bg-emerald-100/60 py-2.5 px-4 rounded-xl border border-emerald-200">
+                      {claim.pickup_pin || '1234'}
+                    </div>
+
+                    <p className="text-[10px] text-slate-500 font-semibold">
+                      Present this 4-digit code to store staff
+                    </p>
+                  </div>
+                </motion.div>
               );
             })}
-          </div>
+          </motion.div>
         )}
-      </main>
+      </div>
     </div>
   );
 }

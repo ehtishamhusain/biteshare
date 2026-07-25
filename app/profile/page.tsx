@@ -1,48 +1,37 @@
 'use client';
 
-import { useState, useEffect, Suspense } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
-import Navbar from '@/components/Navbar';
-import { 
-  User, 
-  Mail, 
-  Phone, 
-  MapPin, 
-  Building, 
-  Save, 
-  CheckCircle2, 
-  AlertCircle, 
-  ShieldCheck, 
-  Loader2,
-  Sparkles,
-  ArrowRight,
+import {
+  User,
+  Building,
+  Phone,
+  MapPin,
+  Save,
+  CheckCircle2,
+  AlertCircle,
+  Shield,
   Globe,
-  Navigation
+  RefreshCw,
 } from 'lucide-react';
 
-function ProfileForm() {
-  const searchParams = useSearchParams();
-  const isOnboarding = searchParams.get('onboarding') === 'true';
-
+export default function ProfilePage() {
+  const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [user, setUser] = useState<any>(null);
+  const [message, setMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
 
-  // Profile Form State
+  // Profile Form States
+  const [role, setRole] = useState<'DONOR' | 'RECIPIENT'>('RECIPIENT');
   const [fullName, setFullName] = useState('');
-  const [phone, setPhone] = useState('');
   const [organizationName, setOrganizationName] = useState('');
-  const [role, setRole] = useState<string>('RECIPIENT');
-
-  // Multi-step Structured Address State
+  const [phone, setPhone] = useState('');
   const [streetAddress, setStreetAddress] = useState('');
   const [city, setCity] = useState('');
-  const [stateName, setStateName] = useState('');
+  const [state, setState] = useState('');
   const [pincode, setPincode] = useState('');
   const [country, setCountry] = useState('India');
-  
-  const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   useEffect(() => {
     fetchProfile();
@@ -50,30 +39,30 @@ function ProfileForm() {
 
   const fetchProfile = async () => {
     setLoading(true);
-    const { data: { user } } = await supabase.auth.getUser();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
 
     if (!user) {
-      window.location.href = '/login';
+      router.push('/login');
       return;
     }
-    setUser(user);
 
-    const { data: profile } = await supabase
+    const { data: profile, error } = await supabase
       .from('profiles')
       .select('*')
       .eq('id', user.id)
-      .single();
+      .maybeSingle();
 
-    if (profile) {
+    if (profile && !error) {
+      const fetchedRole = String(profile.role || 'RECIPIENT').toUpperCase();
+      setRole(fetchedRole === 'DONOR' ? 'DONOR' : 'RECIPIENT');
       setFullName(profile.full_name || '');
-      setPhone(profile.phone || '');
       setOrganizationName(profile.organization_name || '');
-      setRole(profile.role || 'RECIPIENT');
-
-      // Populate structured address or fallback
+      setPhone(profile.phone || '');
       setStreetAddress(profile.street_address || '');
       setCity(profile.city || '');
-      setStateName(profile.state || '');
+      setState(profile.state || '');
       setPincode(profile.pincode || '');
       setCountry(profile.country || 'India');
     }
@@ -82,311 +71,243 @@ function ProfileForm() {
 
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user) return;
-
     setSaving(true);
     setMessage(null);
 
-    // Compute composite formatted address string
-    const fullCombinedAddress = `${streetAddress}, ${city}, ${stateName} - ${pincode}, ${country}`;
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      setMessage({ text: 'Session expired. Please log in again.', type: 'error' });
+      setSaving(false);
+      return;
+    }
+
+    // Prepare update data payload
+    const updatePayload: any = {
+      full_name: fullName.trim(),
+      organization_name: organizationName.trim(),
+      phone: phone.trim(),
+      street_address: streetAddress.trim(),
+      city: city.trim(),
+      state: state.trim(),
+      pincode: pincode.trim(),
+      country: country.trim(),
+    };
 
     const { error } = await supabase
       .from('profiles')
-      .update({
-        full_name: fullName,
-        phone,
-        organization_name: organizationName,
-        street_address: streetAddress,
-        city,
-        state: stateName,
-        pincode,
-        country,
-        address: fullCombinedAddress,
-      })
+      .update(updatePayload)
       .eq('id', user.id);
 
-    setSaving(false);
-
     if (error) {
-      setMessage({ type: 'error', text: 'Failed to update profile: ' + error.message });
+      setMessage({ text: 'Error saving profile: ' + error.message, type: 'error' });
     } else {
-      if (isOnboarding) {
-        if (role === 'DONOR') {
-          window.location.href = '/donor/dashboard';
-        } else {
-          window.location.href = '/feed';
-        }
-      } else {
-        setMessage({ type: 'success', text: '🎉 Profile details updated successfully!' });
-      }
+      setMessage({ text: '🎉 Profile updated successfully!', type: 'success' });
     }
+    setSaving(false);
   };
 
   return (
-    <main className="max-w-3xl mx-auto px-4 sm:px-6 py-10 space-y-6">
-      {/* Onboarding Welcome Banner */}
-      {isOnboarding && (
-        <div className="bg-gradient-to-r from-green-700 to-emerald-800 text-white p-6 sm:p-8 rounded-2xl shadow-md space-y-2">
-          <div className="inline-flex items-center gap-1.5 text-xs font-bold text-green-200 bg-green-950/60 px-3 py-1 rounded-full border border-green-600">
-            <Sparkles className="w-3.5 h-3.5 text-amber-300" /> Account Created
-          </div>
-          <h1 className="text-2xl sm:text-3xl font-extrabold">Welcome to BiteShare!</h1>
-          <p className="text-green-100 text-sm">
-            Please fill in your contact and location details to complete your account setup.
+    <div className="min-h-screen bg-slate-50 py-10 px-4 sm:px-6 lg:px-8">
+      <div className="max-w-3xl mx-auto space-y-8">
+        <div>
+          <h1 className="text-3xl font-black text-slate-900 tracking-tight">
+            Account & Profile Settings
+          </h1>
+          <p className="text-slate-600 text-sm mt-1">
+            Manage your personal or business details and address information for BiteShare.
           </p>
         </div>
-      )}
 
-      {/* Profile Header Badge */}
-      {!isOnboarding && (
-        <div className="bg-white p-6 sm:p-8 rounded-2xl border border-slate-200 shadow-sm flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-          <div className="flex items-center gap-4">
-            <div className="w-16 h-16 bg-green-100 text-green-700 rounded-full flex items-center justify-center font-extrabold text-2xl shrink-0">
-              {fullName ? fullName.charAt(0).toUpperCase() : user?.email?.charAt(0).toUpperCase()}
-            </div>
-            <div>
-              <h1 className="text-2xl font-extrabold text-slate-900">
-                {fullName || 'User Profile'}
-              </h1>
-              <p className="text-xs text-slate-500">{user?.email}</p>
-            </div>
+        {loading ? (
+          <div className="bg-white rounded-3xl p-12 text-center border border-slate-200 shadow-sm flex flex-col items-center justify-center">
+            <RefreshCw className="w-8 h-8 animate-spin text-emerald-600 mb-3" />
+            <p className="text-slate-500 text-sm">Loading profile details...</p>
           </div>
+        ) : (
+          <div className="bg-white p-6 sm:p-10 rounded-3xl border border-slate-200 shadow-sm space-y-6">
+            {message && (
+              <div
+                className={`p-4 rounded-2xl font-semibold text-sm border flex items-center gap-2 ${
+                  message.type === 'success'
+                    ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                    : 'bg-red-50 text-red-800 border-red-200'
+                }`}
+              >
+                {message.type === 'success' ? (
+                  <CheckCircle2 className="w-5 h-5 text-emerald-600 flex-shrink-0" />
+                ) : (
+                  <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0" />
+                )}
+                <span>{message.text}</span>
+              </div>
+            )}
 
-          <span className="inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-full bg-green-100 text-green-800 border border-green-200 uppercase tracking-wider">
-            <ShieldCheck className="w-4 h-4 text-green-600" />
-            {role === 'DONOR' ? 'Food Donor Account' : 'Recipient Account'}
-          </span>
-        </div>
-      )}
+            <form onSubmit={handleSaveProfile} className="space-y-6">
+              {/* Role Indicator Badge */}
+              <div className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-200">
+                <div className="flex items-center gap-2">
+                  <Shield className="w-5 h-5 text-emerald-600" />
+                  <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                    Account Type:
+                  </span>
+                </div>
+                <span className="px-3 py-1 bg-emerald-100 text-emerald-800 rounded-full text-xs font-black uppercase tracking-wider border border-emerald-200">
+                  {role === 'DONOR' ? 'Food Donor / Business' : 'Recipient / Community Shelter'}
+                </span>
+              </div>
 
-      {/* Feedback Alert */}
-      {message && (
-        <div className={`p-4 rounded-xl text-sm font-medium flex items-center gap-2 ${
-          message.type === 'success' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-        }`}>
-          {message.type === 'success' ? <CheckCircle2 className="w-5 h-5 shrink-0" /> : <AlertCircle className="w-5 h-5 shrink-0" />}
-          <span>{message.text}</span>
-        </div>
-      )}
-
-      {/* Form Section */}
-      {loading ? (
-        <div className="bg-white p-12 text-center rounded-2xl border border-slate-200 text-slate-500 space-y-3">
-          <Loader2 className="w-8 h-8 text-green-600 animate-spin mx-auto" />
-          <p className="text-sm font-medium">Loading your profile information...</p>
-        </div>
-      ) : (
-        <div className="bg-white p-6 sm:p-10 rounded-2xl border border-slate-200 shadow-sm space-y-8">
-          <form onSubmit={handleSaveProfile} className="space-y-6">
-            
-            {/* 1. Contact Information Section */}
-            <div className="space-y-4">
-              <h2 className="text-base font-bold text-slate-900 border-b border-slate-100 pb-2 flex items-center gap-2">
-                <User className="w-5 h-5 text-green-600" /> Personal & Contact Information
-              </h2>
-
+              {/* Personal / Business Name */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1">
-                    Full Name / Contact Person
+                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">
+                    Full Name
                   </label>
                   <div className="relative">
-                    <User className="w-4 h-4 text-slate-400 absolute left-3 top-3.5" />
                     <input
                       type="text"
+                      required
                       value={fullName}
                       onChange={(e) => setFullName(e.target.value)}
                       placeholder="e.g. Ehtisham Husain"
-                      className="w-full pl-9 pr-3 py-2.5 border rounded-xl border-slate-300 focus:ring-2 focus:ring-green-500 outline-none text-sm"
-                      required
+                      className="w-full px-4 py-3 pl-10 rounded-xl border border-slate-200 focus:ring-2 focus:ring-emerald-500 outline-none text-sm text-slate-800 bg-slate-50/50"
                     />
+                    <User className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
                   </div>
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1">
-                    Email Address
+                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">
+                    Organization / Shelter Name
                   </label>
                   <div className="relative">
-                    <Mail className="w-4 h-4 text-slate-400 absolute left-3 top-3.5" />
-                    <input
-                      type="email"
-                      value={user?.email || ''}
-                      disabled
-                      className="w-full pl-9 pr-3 py-2.5 border rounded-xl border-slate-200 bg-slate-100 text-slate-500 text-sm cursor-not-allowed"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1">
-                    Phone Number
-                  </label>
-                  <div className="relative">
-                    <Phone className="w-4 h-4 text-slate-400 absolute left-3 top-3.5" />
-                    <input
-                      type="tel"
-                      value={phone}
-                      onChange={(e) => setPhone(e.target.value)}
-                      placeholder="e.g. +91 9876543210"
-                      className="w-full pl-9 pr-3 py-2.5 border rounded-xl border-slate-300 focus:ring-2 focus:ring-green-500 outline-none text-sm"
-                      required
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1">
-                    {role === 'DONOR' ? 'Store / Bakery / Business Name' : 'Organization / Shelter Name (Optional)'}
-                  </label>
-                  <div className="relative">
-                    <Building className="w-4 h-4 text-slate-400 absolute left-3 top-3.5" />
                     <input
                       type="text"
                       value={organizationName}
                       onChange={(e) => setOrganizationName(e.target.value)}
-                      placeholder={role === 'DONOR' ? 'e.g. Gupta Sweets & Bakery' : 'e.g. City Hope Shelter'}
-                      className="w-full pl-9 pr-3 py-2.5 border rounded-xl border-slate-300 focus:ring-2 focus:ring-green-500 outline-none text-sm"
-                      required={role === 'DONOR'}
+                      placeholder="e.g. Community Shelter"
+                      className="w-full px-4 py-3 pl-10 rounded-xl border border-slate-200 focus:ring-2 focus:ring-emerald-500 outline-none text-sm text-slate-800 bg-slate-50/50"
                     />
+                    <Building className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
                   </div>
                 </div>
               </div>
-            </div>
 
-            {/* 2. Structured Address Section */}
-            <div className="space-y-4 pt-2">
-              <h2 className="text-base font-bold text-slate-900 border-b border-slate-100 pb-2 flex items-center gap-2">
-                <MapPin className="w-5 h-5 text-green-600" /> Address Breakdown
-              </h2>
+              {/* Phone Number */}
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">
+                  Phone Number
+                </label>
+                <div className="relative">
+                  <input
+                    type="tel"
+                    required
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                    placeholder="+91 98765 43210"
+                    className="w-full px-4 py-3 pl-10 rounded-xl border border-slate-200 focus:ring-2 focus:ring-emerald-500 outline-none text-sm text-slate-800 bg-slate-50/50"
+                  />
+                  <Phone className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                </div>
+              </div>
 
-              <div className="space-y-4">
-                {/* Street Address / Landmark */}
+              {/* Structured Address */}
+              <div className="space-y-4 pt-4 border-t border-slate-100">
+                <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-700">
+                  <MapPin className="w-4 h-4 text-emerald-600" />
+                  <span>Structured Address Details</span>
+                </div>
+
                 <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1">
-                    Street Address & Landmark
+                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">
+                    Street Address
                   </label>
-                  <div className="relative">
-                    <Building className="w-4 h-4 text-slate-400 absolute left-3 top-3.5" />
-                    <input
-                      type="text"
-                      value={streetAddress}
-                      onChange={(e) => setStreetAddress(e.target.value)}
-                      placeholder="e.g. Shop #12, Near Hartmann College, Civil Lines"
-                      className="w-full pl-9 pr-3 py-2.5 border rounded-xl border-slate-300 focus:ring-2 focus:ring-green-500 outline-none text-sm"
-                      required
-                    />
-                  </div>
+                  <input
+                    type="text"
+                    required
+                    value={streetAddress}
+                    onChange={(e) => setStreetAddress(e.target.value)}
+                    placeholder="House #12, Civil Lines"
+                    className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-emerald-500 outline-none text-sm text-slate-800 bg-slate-50/50"
+                  />
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {/* City */}
                   <div>
-                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1">
-                      City / District
-                    </label>
-                    <div className="relative">
-                      <Navigation className="w-4 h-4 text-slate-400 absolute left-3 top-3.5" />
-                      <input
-                        type="text"
-                        value={city}
-                        onChange={(e) => setCity(e.target.value)}
-                        placeholder="e.g. Bareilly"
-                        className="w-full pl-9 pr-3 py-2.5 border rounded-xl border-slate-300 focus:ring-2 focus:ring-green-500 outline-none text-sm"
-                        required
-                      />
-                    </div>
-                  </div>
-
-                  {/* State */}
-                  <div>
-                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1">
-                      State / Province
+                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">
+                      City
                     </label>
                     <input
                       type="text"
-                      value={stateName}
-                      onChange={(e) => setStateName(e.target.value)}
-                      placeholder="e.g. Uttar Pradesh"
-                      className="w-full px-3 py-2.5 border rounded-xl border-slate-300 focus:ring-2 focus:ring-green-500 outline-none text-sm"
                       required
+                      value={city}
+                      onChange={(e) => setCity(e.target.value)}
+                      placeholder="Bareilly"
+                      className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-emerald-500 outline-none text-sm text-slate-800 bg-slate-50/50"
                     />
                   </div>
 
-                  {/* Pincode / Postal Code */}
                   <div>
-                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1">
-                      Pincode / Postal Code
+                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">
+                      State
                     </label>
                     <input
                       type="text"
+                      required
+                      value={state}
+                      onChange={(e) => setState(e.target.value)}
+                      placeholder="Uttar Pradesh"
+                      className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-emerald-500 outline-none text-sm text-slate-800 bg-slate-50/50"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">
+                      Pincode
+                    </label>
+                    <input
+                      type="text"
+                      required
                       value={pincode}
                       onChange={(e) => setPincode(e.target.value)}
-                      placeholder="e.g. 243001"
-                      className="w-full px-3 py-2.5 border rounded-xl border-slate-300 focus:ring-2 focus:ring-green-500 outline-none text-sm"
-                      required
+                      placeholder="243001"
+                      className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-emerald-500 outline-none text-sm text-slate-800 bg-slate-50/50"
                     />
                   </div>
 
-                  {/* Country Field (Text Input format) */}
                   <div>
-                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1">
+                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">
                       Country
                     </label>
                     <div className="relative">
-                      <Globe className="w-4 h-4 text-slate-400 absolute left-3 top-3.5" />
                       <input
                         type="text"
+                        required
                         value={country}
                         onChange={(e) => setCountry(e.target.value)}
-                        placeholder="e.g. India"
-                        className="w-full pl-9 pr-3 py-2.5 border rounded-xl border-slate-300 focus:ring-2 focus:ring-green-500 outline-none text-sm"
-                        required
+                        placeholder="India"
+                        className="w-full px-4 py-3 pl-10 rounded-xl border border-slate-200 focus:ring-2 focus:ring-emerald-500 outline-none text-sm text-slate-800 bg-slate-50/50"
                       />
+                      <Globe className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
                     </div>
                   </div>
                 </div>
               </div>
-            </div>
 
-            {/* Submit Button */}
-            <button
-              type="submit"
-              disabled={saving}
-              className="w-full bg-green-600 text-white py-3.5 rounded-xl font-bold hover:bg-green-700 transition flex items-center justify-center gap-2 text-sm shadow-md disabled:opacity-50 mt-4"
-            >
-              {saving ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" /> Saving Profile...
-                </>
-              ) : isOnboarding ? (
-                <>
-                  Complete Setup & Continue <ArrowRight className="w-4 h-4" />
-                </>
-              ) : (
-                <>
-                  <Save className="w-4 h-4" /> Save Profile Details
-                </>
-              )}
-            </button>
-          </form>
-        </div>
-      )}
-    </main>
-  );
-}
-
-export default function ProfilePage() {
-  return (
-    <div className="min-h-screen bg-slate-50 text-slate-800">
-      <Navbar />
-      <Suspense fallback={
-        <div className="text-center py-20 text-slate-500 text-sm">
-          Loading profile...
-        </div>
-      }>
-        <ProfileForm />
-      </Suspense>
+              <button
+                type="submit"
+                disabled={saving}
+                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold py-3.5 px-6 rounded-2xl transition shadow-md inline-flex items-center justify-center gap-2 text-sm disabled:opacity-50"
+              >
+                <Save className="w-4 h-4" />
+                <span>{saving ? 'Saving Changes...' : 'Save Profile Changes'}</span>
+              </button>
+            </form>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

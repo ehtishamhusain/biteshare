@@ -1,253 +1,377 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { motion, Variants } from 'framer-motion';
 import { supabase } from '@/lib/supabase';
-import Navbar from '@/components/Navbar';
-import { 
-  ClipboardCheck, 
-  User, 
-  Phone, 
-  CheckCircle2, 
-  AlertCircle, 
-  KeyRound, 
-  Package, 
-  Check 
+import {
+  Utensils,
+  ShieldCheck,
+  RefreshCw,
+  Tag,
+  Clock,
+  Trash2,
+  CheckCircle2,
+  AlertCircle,
 } from 'lucide-react';
 
+const fadeInUp: Variants = {
+  hidden: { opacity: 0, y: 20 },
+  visible: {
+    opacity: 1,
+    y: 0,
+    transition: { duration: 0.4 },
+  },
+};
+
+const staggerContainer: Variants = {
+  hidden: { opacity: 0 },
+  visible: {
+    opacity: 1,
+    transition: { staggerChildren: 0.1 },
+  },
+};
+
 export default function DonorManagePage() {
+  const [activeTab, setActiveTab] = useState<'listings' | 'claims'>('listings');
   const [bundles, setBundles] = useState<any[]>([]);
+  const [claims, setClaims] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [pinInputs, setPinInputs] = useState<{ [key: string]: string }>({});
   const [verifyingId, setVerifyingId] = useState<string | null>(null);
-  const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [message, setMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
 
   useEffect(() => {
-    fetchDonorListings();
-
-    // Listen for auth state changes (e.g. Sign Out)
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
-      if (event === 'SIGNED_OUT') {
-        window.location.href = '/login';
-      }
-    });
-
-    return () => {
-      subscription.unsubscribe();
-    };
+    fetchDonorData();
   }, []);
 
-  const fetchDonorListings = async () => {
+  const fetchDonorData = async () => {
     setLoading(true);
-    const { data: { user } } = await supabase.auth.getUser();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
 
-    // Strict Auth Guard
     if (!user) {
-      window.location.href = '/login';
+      setLoading(false);
       return;
     }
 
-    try {
-      // 1. Fetch donor's food bundles
-      const { data: bundlesData, error: bundlesError } = await supabase
-        .from('food_bundles')
-        .select('*')
-        .eq('donor_id', user.id)
-        .order('created_at', { ascending: false });
+    const { data: donorBundles } = await supabase
+      .from('food_bundles')
+      .select('*')
+      .eq('donor_id', user.id)
+      .order('created_at', { ascending: false });
 
-      if (bundlesError || !bundlesData) {
-        setLoading(false);
-        return;
+    if (donorBundles) {
+      setBundles(donorBundles);
+
+      const bundleIds = donorBundles.map((b) => b.id);
+      if (bundleIds.length > 0) {
+        const { data: activeClaims } = await supabase
+          .from('claims')
+          .select(
+            '*, recipient:profiles(full_name, phone, organization_name), bundle:food_bundles(title, quantity, price, pickup_window_end)'
+          )
+          .in('bundle_id', bundleIds)
+          .order('created_at', { ascending: false });
+
+        if (activeClaims) {
+          setClaims(activeClaims);
+        }
       }
-
-      if (bundlesData.length === 0) {
-        setBundles([]);
-        setLoading(false);
-        return;
-      }
-
-      // 2. Fetch associated claims with recipient profiles
-      const bundleIds = bundlesData.map((b) => b.id);
-      const { data: claimsData } = await supabase
-        .from('claims')
-        .select('*, profiles:recipient_id(full_name, phone, email)')
-        .in('bundle_id', bundleIds);
-
-      const claimsMap = new Map((claimsData || []).map((c) => [c.bundle_id, c]));
-
-      const combinedListings = bundlesData.map((bundle) => ({
-        ...bundle,
-        claim: claimsMap.get(bundle.id) || null,
-      }));
-
-      setBundles(combinedListings);
-    } catch (err: any) {
-      console.error('Error loading donor listings:', err);
-    } finally {
-      setLoading(false);
     }
+    setLoading(false);
   };
 
-  const handleVerifyPin = async (bundleId: string, expectedPin: string) => {
-    const enteredPin = pinInputs[bundleId]?.trim();
+  const handleDeleteBundle = async (bundleId: string) => {
+    if (!confirm('Are you sure you want to permanently delete this listing?')) return;
 
-    if (!enteredPin) {
-      setMessage({ type: 'error', text: 'Please enter the 4-digit PIN presented by the recipient.' });
-      return;
-    }
-
-    if (enteredPin !== expectedPin) {
-      setMessage({ type: 'error', text: '❌ Invalid PIN! Please check the recipient screen and try again.' });
-      return;
-    }
-
-    setVerifyingId(bundleId);
+    setDeletingId(bundleId);
     setMessage(null);
 
-    // Update claim and food_bundle status to COMPLETED
-    await supabase
-      .from('claims')
-      .update({ status: 'COMPLETED' })
-      .eq('bundle_id', bundleId);
+    await supabase.from('claims').delete().eq('bundle_id', bundleId);
 
-    await supabase
+    const { error } = await supabase
       .from('food_bundles')
-      .update({ status: 'COMPLETED' })
+      .delete()
       .eq('id', bundleId);
 
-    setMessage({ type: 'success', text: '🎉 Pickup verified successfully! Order marked as completed.' });
-    setVerifyingId(null);
-    fetchDonorListings();
+    if (error) {
+      setMessage({ text: 'Failed to delete listing: ' + error.message, type: 'error' });
+    } else {
+      setMessage({ text: 'Listing permanently removed!', type: 'success' });
+      setBundles((prev) => prev.filter((b) => b.id !== bundleId));
+    }
+    setDeletingId(null);
   };
 
-  return (
-    <div className="min-h-screen bg-slate-50 text-slate-800">
-      <Navbar />
+  // 🔑 Verify 4-Digit Security PIN
+  const handleVerifyPin = async (claimId: string, expectedPin: string) => {
+    setVerifyingId(claimId);
+    setMessage(null);
 
-      <main className="max-w-5xl mx-auto px-4 sm:px-6 py-10 space-y-6">
-        <div className="bg-white p-6 sm:p-8 rounded-2xl border border-slate-200 shadow-sm flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+    const enteredPin = pinInputs[claimId]?.trim();
+
+    if (!enteredPin || enteredPin !== expectedPin) {
+      setMessage({
+        text: '❌ Invalid 4-Digit Security PIN. Please re-check with recipient.',
+        type: 'error',
+      });
+      setVerifyingId(null);
+      return;
+    }
+
+    // Update claim status to COMPLETED
+    const { error: claimErr } = await supabase
+      .from('claims')
+      .update({ status: 'COMPLETED' })
+      .eq('id', claimId);
+
+    if (claimErr) {
+      setMessage({ text: 'Failed to complete pickup: ' + claimErr.message, type: 'error' });
+      setVerifyingId(null);
+      return;
+    }
+
+    const claim = claims.find((c) => c.id === claimId);
+    if (claim) {
+      await supabase
+        .from('food_bundles')
+        .update({ status: 'PICKED_UP' })
+        .eq('id', claim.bundle_id);
+    }
+
+    setMessage({
+      text: '✅ PIN Verified! Order marked as successfully picked up.',
+      type: 'success',
+    });
+    fetchDonorData();
+    setVerifyingId(null);
+  };
+
+  const availableBundles = bundles.filter((b) => b.status === 'AVAILABLE');
+
+  return (
+    <div className="min-h-screen bg-slate-50 py-10 px-4 sm:px-6 lg:px-8">
+      <div className="max-w-6xl mx-auto space-y-8">
+        <motion.div
+          initial={{ opacity: 0, y: -15 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5 }}
+          className="flex flex-col sm:flex-row sm:items-center justify-between gap-4"
+        >
           <div>
-            <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 flex items-center gap-2">
-              <ClipboardCheck className="w-7 h-7 text-green-600" /> Store Pickup Verification
+            <h1 className="text-3xl font-black text-slate-900 tracking-tight">
+              Manage Listings & Store Pickups
             </h1>
-            <p className="text-sm text-slate-500 mt-1">
-              Verify recipient pickup PINs and manage your store's surplus listings.
+            <p className="text-slate-600 text-sm mt-1">
+              View your active surplus food offerings and verify recipient security PINs.
             </p>
           </div>
-          <a
-            href="/donor/dashboard"
-            className="bg-green-600 text-white px-4 py-2 rounded-xl text-xs font-bold hover:bg-green-700 transition"
-          >
-            + Post New Bundle
-          </a>
-        </div>
+
+          <div className="inline-flex p-1.5 rounded-2xl bg-slate-200/80 border border-slate-300">
+            <button
+              onClick={() => setActiveTab('listings')}
+              className={`px-5 py-2 rounded-xl text-xs font-bold transition-all ${
+                activeTab === 'listings'
+                  ? 'bg-white text-emerald-800 shadow-md'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              Active Listings ({availableBundles.length})
+            </button>
+            <button
+              onClick={() => setActiveTab('claims')}
+              className={`px-5 py-2 rounded-xl text-xs font-bold transition-all ${
+                activeTab === 'claims'
+                  ? 'bg-white text-emerald-800 shadow-md'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              Reservations & Pickups ({claims.length})
+            </button>
+          </div>
+        </motion.div>
 
         {message && (
-          <div className={`p-4 rounded-xl text-sm font-medium flex items-center gap-2 ${
-            message.type === 'success' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-          }`}>
-            {message.type === 'success' ? <CheckCircle2 className="w-5 h-5 shrink-0" /> : <AlertCircle className="w-5 h-5 shrink-0" />}
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className={`p-4 rounded-2xl font-semibold text-sm border shadow-sm flex items-center gap-2 ${
+              message.type === 'success'
+                ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                : 'bg-red-50 text-red-800 border-red-200'
+            }`}
+          >
+            {message.type === 'success' ? (
+              <CheckCircle2 className="w-5 h-5 text-emerald-600 flex-shrink-0" />
+            ) : (
+              <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0" />
+            )}
             <span>{message.text}</span>
-          </div>
+          </motion.div>
         )}
 
         {loading ? (
-          <div className="text-center py-20 text-slate-500 text-sm">
-            Loading active store listings...
+          <div className="bg-white rounded-3xl p-12 text-center border border-slate-200 shadow-sm flex flex-col items-center justify-center">
+            <RefreshCw className="w-8 h-8 animate-spin text-emerald-600 mb-3" />
+            <p className="text-slate-500 text-sm">Loading your donor board...</p>
           </div>
-        ) : bundles.length === 0 ? (
-          <div className="bg-white p-12 text-center rounded-2xl border border-slate-200 text-slate-500 space-y-3">
-            <Package className="w-12 h-12 text-slate-300 mx-auto" />
-            <p className="font-semibold text-slate-700">No active surplus food listings found.</p>
-            <a href="/donor/dashboard" className="inline-block text-xs font-bold text-green-600 hover:underline">
-              Click here to publish a bundle
-            </a>
-          </div>
-        ) : (
-          <div className="space-y-4">
-            {bundles.map((bundle) => {
-              const claim = bundle.claim;
-              const recipient = claim?.profiles;
-              const isCompleted = bundle.status === 'COMPLETED' || claim?.status === 'COMPLETED';
-
-              return (
-                <div 
+        ) : activeTab === 'listings' ? (
+          availableBundles.length === 0 ? (
+            <div className="bg-white rounded-3xl p-12 text-center border border-slate-200 shadow-sm max-w-lg mx-auto space-y-3">
+              <Utensils className="w-12 h-12 text-slate-300 mx-auto" />
+              <h3 className="text-lg font-bold text-slate-800">No active listings</h3>
+              <p className="text-slate-500 text-sm">
+                You have no active food bundles right now. Publish a new bundle from your dashboard!
+              </p>
+            </div>
+          ) : (
+            <motion.div
+              className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
+              initial="hidden"
+              animate="visible"
+              variants={staggerContainer}
+            >
+              {availableBundles.map((bundle) => (
+                <motion.div
                   key={bundle.id}
-                  className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4"
+                  variants={fadeInUp}
+                  whileHover={{ y: -4 }}
+                  className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm hover:shadow-md transition flex flex-col justify-between"
                 >
-                  <div className="flex justify-between items-start border-b border-slate-100 pb-3">
-                    <div>
-                      <h3 className="font-bold text-slate-900 text-lg">{bundle.title}</h3>
-                      <p className="text-xs text-slate-500">
-                        {bundle.address || 'No specific address listed.'}
-                      </p>
+                  <div className="space-y-3">
+                    <div className="flex justify-between items-start">
+                      <span className="px-3 py-1 bg-emerald-100 text-emerald-800 rounded-full text-xs font-bold uppercase tracking-wider border border-emerald-200">
+                        🟢 Live on Feed
+                      </span>
+                      <span className="font-black text-lg text-slate-900">
+                        {bundle.price === 0 || !bundle.price ? '🎁 FREE' : `₹${bundle.price}`}
+                      </span>
                     </div>
 
-                    <span className={`text-xs font-extrabold px-3 py-1 rounded-full ${
-                      isCompleted 
-                        ? 'bg-slate-100 text-slate-700' 
-                        : claim 
-                        ? 'bg-amber-100 text-amber-900' 
-                        : 'bg-green-100 text-green-800'
-                    }`}>
-                      {isCompleted ? '✓ PICKED UP' : claim ? '⏳ CLAIMED (PENDING PICKUP)' : '🟢 AVAILABLE'}
+                    <h3 className="text-lg font-bold text-slate-900">{bundle.title}</h3>
+                    <p className="text-slate-600 text-xs line-clamp-2">
+                      {bundle.description || 'Surplus food available for pickup.'}
+                    </p>
+
+                    <div className="pt-2 border-t border-slate-100 space-y-1.5 text-xs text-slate-500">
+                      <div className="flex items-center gap-1.5">
+                        <Tag className="w-3.5 h-3.5 text-emerald-600" />
+                        <span>Quantity: {bundle.quantity} servings</span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <Clock className="w-3.5 h-3.5 text-amber-600" />
+                        <span>
+                          Closes:{' '}
+                          {new Date(bundle.pickup_window_end).toLocaleTimeString([], {
+                            hour: '2-digit',
+                            minute: '2-digit',
+                            hour12: true,
+                          })}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="pt-4 mt-4 border-t border-slate-100 flex justify-end">
+                    <button
+                      onClick={() => handleDeleteBundle(bundle.id)}
+                      disabled={deletingId === bundle.id}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-red-600 bg-red-50 hover:bg-red-100 transition border border-red-200 disabled:opacity-50"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>{deletingId === bundle.id ? 'Deleting...' : 'Delete Listing'}</span>
+                    </button>
+                  </div>
+                </motion.div>
+              ))}
+            </motion.div>
+          )
+        ) : claims.length === 0 ? (
+          <div className="bg-white rounded-3xl p-12 text-center border border-slate-200 shadow-sm max-w-lg mx-auto space-y-3">
+            <ShieldCheck className="w-12 h-12 text-slate-300 mx-auto" />
+            <h3 className="text-lg font-bold text-slate-800">No active reservations yet</h3>
+            <p className="text-slate-500 text-sm">
+              When community members reserve your surplus bundles, their claims and verification PINs will show here.
+            </p>
+          </div>
+        ) : (
+          <motion.div
+            className="space-y-6"
+            initial="hidden"
+            animate="visible"
+            variants={staggerContainer}
+          >
+            {claims.map((claim) => (
+              <motion.div
+                key={claim.id}
+                variants={fadeInUp}
+                whileHover={{ y: -3 }}
+                className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-200 shadow-sm transition flex flex-col md:flex-row justify-between items-start md:items-center gap-6"
+              >
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <span
+                      className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${
+                        claim.status === 'COMPLETED' || claim.status === 'completed'
+                          ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                          : 'bg-amber-100 text-amber-800 border border-amber-200'
+                      }`}
+                    >
+                      {claim.status === 'COMPLETED' || claim.status === 'completed'
+                        ? 'Completed Pickup'
+                        : 'Pending PIN Verification'}
                     </span>
                   </div>
 
-                  {/* Recipient Details */}
-                  {claim && recipient && (
-                    <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-                      <div>
-                        <span className="text-slate-400 font-semibold uppercase block text-[10px]">Reserved By</span>
-                        <div className="font-bold text-slate-800 flex items-center gap-1.5 mt-0.5">
-                          <User className="w-3.5 h-3.5 text-green-600" />
-                          <span>{recipient.full_name || 'Community Member'}</span>
-                        </div>
-                      </div>
-
-                      <div>
-                        <span className="text-slate-400 font-semibold uppercase block text-[10px]">Contact Phone</span>
-                        <div className="font-bold text-slate-800 flex items-center gap-1.5 mt-0.5">
-                          <Phone className="w-3.5 h-3.5 text-green-600" />
-                          <span>{recipient.phone || 'No phone provided'}</span>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* PIN Verification Handshake Form */}
-                  {claim && !isCompleted && (
-                    <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl space-y-2">
-                      <label className="block text-xs font-bold text-amber-900 uppercase tracking-wider">
-                        Enter Recipient's 4-Digit Pickup PIN
-                      </label>
-                      <div className="flex gap-2">
-                        <div className="relative flex-1">
-                          <KeyRound className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
-                          <input
-                            type="text"
-                            maxLength={4}
-                            placeholder="Enter PIN (e.g. 4829)"
-                            value={pinInputs[bundle.id] || ''}
-                            onChange={(e) => setPinInputs({ ...pinInputs, [bundle.id]: e.target.value })}
-                            className="w-full pl-9 pr-3 py-2 border rounded-xl border-slate-300 focus:ring-2 focus:ring-green-500 outline-none text-sm bg-white font-mono font-bold"
-                          />
-                        </div>
-                        <button
-                          onClick={() => handleVerifyPin(bundle.id, claim.pickup_pin)}
-                          disabled={verifyingId === bundle.id}
-                          className="bg-green-600 text-white px-5 py-2 rounded-xl text-xs font-bold hover:bg-green-700 transition flex items-center gap-1.5 shrink-0"
-                        >
-                          <Check className="w-4 h-4" /> Verify & Complete
-                        </button>
-                      </div>
-                    </div>
-                  )}
+                  <h3 className="text-xl font-bold text-slate-900">{claim.bundle?.title}</h3>
+                  <div className="text-xs text-slate-500 space-y-1">
+                    <p>
+                      Claimed by:{' '}
+                      <span className="font-bold text-slate-800">
+                        {claim.recipient?.full_name ||
+                          claim.recipient?.organization_name ||
+                          'Community Member'}
+                      </span>
+                    </p>
+                    <p>Phone: {claim.recipient?.phone || 'Not provided'}</p>
+                  </div>
                 </div>
-              );
-            })}
-          </div>
+
+                {claim.status !== 'COMPLETED' && claim.status !== 'completed' && (
+                  <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-3 w-full md:w-auto min-w-[280px]">
+                    <div className="flex items-center gap-2 text-xs font-bold text-slate-700">
+                      <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                      <span>Enter Recipient 4-Digit PIN:</span>
+                    </div>
+
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        maxLength={4}
+                        placeholder="1234"
+                        value={pinInputs[claim.id] || ''}
+                        onChange={(e) =>
+                          setPinInputs({ ...pinInputs, [claim.id]: e.target.value })
+                        }
+                        className="w-28 px-3 py-2 text-center text-base font-mono font-bold tracking-widest rounded-xl border border-slate-300 focus:ring-2 focus:ring-emerald-500 outline-none"
+                      />
+                      <button
+                        onClick={() => handleVerifyPin(claim.id, claim.pickup_pin)}
+                        disabled={verifyingId === claim.id}
+                        className="bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold px-4 py-2 rounded-xl text-xs transition shadow-sm disabled:opacity-50 flex-grow"
+                      >
+                        {verifyingId === claim.id ? 'Verifying...' : 'Verify PIN'}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </motion.div>
+            ))}
+          </motion.div>
         )}
-      </main>
+      </div>
     </div>
   );
 }
