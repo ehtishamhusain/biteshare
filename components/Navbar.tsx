@@ -24,6 +24,8 @@ import {
   IndianRupee,
   ChevronDown,
   Store,
+  Heart,
+  Award,
 } from 'lucide-react';
 
 export default function Navbar() {
@@ -34,7 +36,7 @@ export default function Navbar() {
   const [loading, setLoading] = useState(true);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-  // 🔽 "More" Dropdown State & Ref (ONLY FOR DONORS)
+  // 🔽 "More" Dropdown State & Ref
   const [moreDropdownOpen, setMoreDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -116,13 +118,18 @@ export default function Navbar() {
     router.refresh();
   };
 
-  const isMoreActive = ['/reviews', '/about', '/contact', '/restaurants'].some(
-    (path) => pathname === path || pathname.startsWith('/restaurants/')
-  );
+  const isDonorMoreActive = [
+    '/reviews',
+    '/about',
+    '/contact',
+    '/donor/certificate',
+  ].includes(pathname);
+
+  const isRecipientMoreActive = ['/reviews', '/about', '/contact'].includes(pathname);
 
   return (
     <>
-      <nav className="sticky top-0 z-50 bg-white/90 backdrop-blur-md border-b border-slate-200 shadow-sm">
+      <nav className="sticky top-0 z-50 bg-white/90 backdrop-blur-md border-b border-slate-200 shadow-xs">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             {/* Brand Logo */}
@@ -150,7 +157,7 @@ export default function Navbar() {
                 <span>Home</span>
               </Link>
 
-              {/* 🟢 DONOR SPECIFIC LINKS (With "More" Dropdown) */}
+              {/* 🟢 DONOR SPECIFIC LINKS */}
               {user && role === 'DONOR' ? (
                 <>
                   <Link
@@ -181,7 +188,7 @@ export default function Navbar() {
                     href="/donor/earnings"
                     className={`px-3 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
                       pathname === '/donor/earnings'
-                        ? 'bg-amber-500 text-white font-extrabold shadow-sm'
+                        ? 'bg-amber-500 text-white font-extrabold shadow-xs'
                         : 'text-amber-800 bg-amber-50 hover:bg-amber-100 border border-amber-200'
                     }`}
                   >
@@ -201,13 +208,13 @@ export default function Navbar() {
                     <span>Analytics</span>
                   </Link>
 
-                  {/* 🔽 "MORE" DROPDOWN MENU ONLY FOR DONORS */}
+                  {/* 🔽 "MORE" DROPDOWN FOR DONORS */}
                   <div className="relative" ref={dropdownRef}>
                     <button
                       type="button"
                       onClick={() => setMoreDropdownOpen(!moreDropdownOpen)}
                       className={`px-3 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1 ${
-                        isMoreActive
+                        isDonorMoreActive
                           ? 'bg-emerald-50 text-emerald-800 font-extrabold'
                           : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
                       }`}
@@ -230,16 +237,16 @@ export default function Navbar() {
                           className="absolute right-0 mt-2 w-52 bg-white rounded-2xl border border-slate-200 shadow-xl py-2 z-50 space-y-0.5"
                         >
                           <Link
-                            href="/restaurants"
+                            href="/donor/certificate"
                             onClick={() => setMoreDropdownOpen(false)}
                             className={`flex items-center gap-2.5 px-4 py-2.5 text-xs font-bold transition ${
-                              pathname === '/restaurants' || pathname.startsWith('/restaurants/')
+                              pathname === '/donor/certificate'
                                 ? 'bg-emerald-50 text-emerald-800'
                                 : 'text-slate-700 hover:bg-slate-50'
                             }`}
                           >
-                            <Store className="w-4 h-4 text-emerald-600" />
-                            <span>Explore Restaurants</span>
+                            <Award className="w-4 h-4 text-emerald-600" />
+                            <span>CSR Certificate</span>
                           </Link>
 
                           <Link
@@ -286,7 +293,7 @@ export default function Navbar() {
                   </div>
                 </>
               ) : (
-                /* 🔵 RECIPIENT & GUEST LINKS (Direct Links, No "More" Dropdown) */
+                /* 🔵 RECIPIENT & GUEST LINKS */
                 <>
                   <Link
                     href="/feed"
@@ -300,7 +307,6 @@ export default function Navbar() {
                     <span>Explore Feed</span>
                   </Link>
 
-                  {/* 🏬 NEW: EXPLORE RESTAURANTS LINK FOR GUESTS & RECIPIENTS */}
                   <Link
                     href="/restaurants"
                     className={`px-3 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
@@ -311,6 +317,18 @@ export default function Navbar() {
                   >
                     <Store className="w-4 h-4 text-emerald-600" />
                     <span>Explore Restaurants</span>
+                  </Link>
+
+                  <Link
+                    href="/sponsor"
+                    className={`px-3 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
+                      pathname === '/sponsor'
+                        ? 'bg-emerald-50 text-emerald-800 font-extrabold'
+                        : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                    }`}
+                  >
+                    <Heart className="w-4 h-4 text-emerald-600 fill-emerald-100" />
+                    <span>Sponsor a Meal</span>
                   </Link>
 
                   {user && role === 'RECIPIENT' && (
@@ -327,42 +345,76 @@ export default function Navbar() {
                     </Link>
                   )}
 
-                  {/* Public Links Direct in Navbar for Guests & Recipients */}
-                  <Link
-                    href="/reviews"
-                    className={`px-3 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
-                      pathname === '/reviews'
-                        ? 'bg-emerald-50 text-emerald-800 font-extrabold'
-                        : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-                    }`}
-                  >
-                    <Star className="w-4 h-4 text-emerald-600" />
-                    <span>Reviews</span>
-                  </Link>
+                  {/* 🔽 "MORE" DROPDOWN FOR RECIPIENTS & GUESTS */}
+                  <div className="relative" ref={dropdownRef}>
+                    <button
+                      type="button"
+                      onClick={() => setMoreDropdownOpen(!moreDropdownOpen)}
+                      className={`px-3 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1 ${
+                        isRecipientMoreActive
+                          ? 'bg-emerald-50 text-emerald-800 font-extrabold'
+                          : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                      }`}
+                    >
+                      <span>More</span>
+                      <ChevronDown
+                        className={`w-3.5 h-3.5 transition-transform duration-200 ${
+                          moreDropdownOpen ? 'rotate-180 text-emerald-600' : 'text-slate-400'
+                        }`}
+                      />
+                    </button>
 
-                  <Link
-                    href="/about"
-                    className={`px-3 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
-                      pathname === '/about'
-                        ? 'bg-emerald-50 text-emerald-800 font-extrabold'
-                        : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-                    }`}
-                  >
-                    <Info className="w-4 h-4 text-emerald-600" />
-                    <span>About Us</span>
-                  </Link>
+                    <AnimatePresence>
+                      {moreDropdownOpen && (
+                        <motion.div
+                          initial={{ opacity: 0, scale: 0.95, y: 8 }}
+                          animate={{ opacity: 1, scale: 1, y: 0 }}
+                          exit={{ opacity: 0, scale: 0.95, y: 8 }}
+                          transition={{ duration: 0.15 }}
+                          className="absolute right-0 mt-2 w-48 bg-white rounded-2xl border border-slate-200 shadow-xl py-2 z-50 space-y-0.5"
+                        >
+                          <Link
+                            href="/reviews"
+                            onClick={() => setMoreDropdownOpen(false)}
+                            className={`flex items-center gap-2.5 px-4 py-2.5 text-xs font-bold transition ${
+                              pathname === '/reviews'
+                                ? 'bg-emerald-50 text-emerald-800'
+                                : 'text-slate-700 hover:bg-slate-50'
+                            }`}
+                          >
+                            <Star className="w-4 h-4 text-amber-500" />
+                            <span>Reviews</span>
+                          </Link>
 
-                  <Link
-                    href="/contact"
-                    className={`px-3 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
-                      pathname === '/contact'
-                        ? 'bg-emerald-50 text-emerald-800 font-extrabold'
-                        : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-                    }`}
-                  >
-                    <Mail className="w-4 h-4 text-emerald-600" />
-                    <span>Contact Us</span>
-                  </Link>
+                          <Link
+                            href="/about"
+                            onClick={() => setMoreDropdownOpen(false)}
+                            className={`flex items-center gap-2.5 px-4 py-2.5 text-xs font-bold transition ${
+                              pathname === '/about'
+                                ? 'bg-emerald-50 text-emerald-800'
+                                : 'text-slate-700 hover:bg-slate-50'
+                            }`}
+                          >
+                            <Info className="w-4 h-4 text-emerald-600" />
+                            <span>About Us</span>
+                          </Link>
+
+                          <Link
+                            href="/contact"
+                            onClick={() => setMoreDropdownOpen(false)}
+                            className={`flex items-center gap-2.5 px-4 py-2.5 text-xs font-bold transition ${
+                              pathname === '/contact'
+                                ? 'bg-emerald-50 text-emerald-800'
+                                : 'text-slate-700 hover:bg-slate-50'
+                            }`}
+                          >
+                            <Mail className="w-4 h-4 text-teal-600" />
+                            <span>Contact Us</span>
+                          </Link>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
                 </>
               )}
 
@@ -462,6 +514,13 @@ export default function Navbar() {
                 >
                   📊 Impact Analytics
                 </Link>
+                <Link
+                  href="/donor/certificate"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="block px-4 py-2.5 rounded-xl text-xs font-bold text-slate-700 hover:bg-slate-50"
+                >
+                  📜 CSR Certificate
+                </Link>
               </>
             )}
 
@@ -481,6 +540,14 @@ export default function Navbar() {
                   className="block px-4 py-2.5 rounded-xl text-xs font-bold text-slate-700 hover:bg-slate-50"
                 >
                   🏬 Explore Restaurants
+                </Link>
+
+                <Link
+                  href="/sponsor"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="block px-4 py-2.5 rounded-xl text-xs font-bold text-slate-700 hover:bg-slate-50"
+                >
+                  ❤️ Sponsor a Meal
                 </Link>
               </>
             )}
@@ -584,7 +651,7 @@ export default function Navbar() {
               transition={{ type: 'spring', duration: 0.3 }}
               className="relative bg-white rounded-3xl p-6 sm:p-8 max-w-sm w-full shadow-2xl border border-slate-100 text-center space-y-5 z-10"
             >
-              <div className="w-14 h-14 bg-red-100 text-red-600 rounded-2xl flex items-center justify-center mx-auto shadow-sm">
+              <div className="w-14 h-14 bg-red-100 text-red-600 rounded-2xl flex items-center justify-center mx-auto shadow-xs">
                 <AlertTriangle className="w-7 h-7" />
               </div>
 
