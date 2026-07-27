@@ -284,31 +284,31 @@ export default function SignupPage() {
       </div>
 
       {/* ========================================================================= */}
-      {/* IMPORTANT POINTS & GUIDELINES POPUP MODAL                                 */}
+      {/* EXPANDED & ENLARGED POPUP MODAL                                           */}
       {/* ========================================================================= */}
       {showModal && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-lg w-full p-6 sm:p-8 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-200 max-h-[90vh] flex flex-col justify-between">
-            <div className="overflow-y-auto pr-1 space-y-5">
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-md flex items-center justify-center p-4 sm:p-6">
+          <div className="bg-white rounded-3xl max-w-2xl w-full p-6 sm:p-10 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-200 max-h-[88vh] flex flex-col justify-between">
+            <div className="overflow-y-auto pr-2 space-y-6">
               {/* Modal Header */}
-              <div className="flex items-center justify-between border-b border-slate-100 pb-4">
-                <div className="flex items-center gap-2.5">
-                  <div className={`p-2 rounded-xl text-white ${role === 'DONOR' ? 'bg-amber-500' : 'bg-emerald-600'}`}>
-                    {role === 'DONOR' ? <ShieldAlert className="w-5 h-5" /> : <FileText className="w-5 h-5" />}
+              <div className="flex items-center justify-between border-b border-slate-100 pb-5">
+                <div className="flex items-center gap-3">
+                  <div className={`p-3 rounded-2xl text-white shadow-sm ${role === 'DONOR' ? 'bg-amber-500' : 'bg-emerald-600'}`}>
+                    {role === 'DONOR' ? <ShieldAlert className="w-6 h-6" /> : <FileText className="w-6 h-6" />}
                   </div>
                   <div>
-                    <h3 className="text-lg font-black text-slate-900 tracking-tight">
+                    <h3 className="text-xl font-black text-slate-900 tracking-tight">
                       {role === 'DONOR' ? 'Food Donor Guidelines & Safety Standards' : 'Recipient Food Safety Guidelines'}
                     </h3>
-                    <p className="text-xs text-slate-500">
-                      Please read and acknowledge before completing signup
+                    <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
+                      Please read and acknowledge before completing your BiteShare signup
                     </p>
                   </div>
                 </div>
                 <button
                   type="button"
                   onClick={() => setShowModal(false)}
-                  className="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition"
+                  className="p-2 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition"
                 >
                   <X className="w-5 h-5" />
                 </button>
@@ -317,97 +317,105 @@ export default function SignupPage() {
               {/* Guidelines Content */}
               {role === 'DONOR' ? (
                 /* DONOR GUIDELINES */
-                <div className="space-y-3 text-xs leading-relaxed text-slate-700">
-                  <div className="p-3 bg-amber-50 border border-amber-200 rounded-2xl flex items-start gap-2.5 text-amber-900 font-medium">
+                <div className="space-y-4 text-sm leading-relaxed text-slate-700">
+                  <div className="p-4 bg-amber-50 border border-amber-200 rounded-2xl flex items-start gap-3 text-amber-950 font-medium">
                     <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
                     <span>
                       <strong className="font-bold">Legal Responsibility Warning:</strong> As a food donor, you are legally accountable for the quality and safety of food items listed on BiteShare.
                     </span>
                   </div>
 
-                  <ul className="space-y-2.5 pl-1">
-                    <li className="flex items-start gap-2">
-                      <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0 mt-0.5" />
-                      <span>
-                        <strong className="font-bold text-slate-900">Fresh & Edible Ingredients Only:</strong> Food must be freshly prepared or safely stored. Spoiled, expired, or contaminated items are strictly prohibited.
-                      </span>
+                  <ul className="space-y-3 pt-1">
+                    <li className="flex items-start gap-3 bg-slate-50/70 p-3.5 rounded-2xl border border-slate-100">
+                      <CheckCircle2 className="w-5 h-5 text-emerald-600 flex-shrink-0 mt-0.5" />
+                      <div>
+                        <strong className="font-bold text-slate-900 block mb-0.5">Fresh & Edible Ingredients Only</strong>
+                        <span>Food must be freshly prepared using wholesome, safe ingredients. Spoiled, expired, or contaminated items are strictly prohibited.</span>
+                      </div>
                     </li>
 
-                    <li className="flex items-start gap-2">
-                      <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0 mt-0.5" />
-                      <span>
-                        <strong className="font-bold text-slate-900">Hygiene & Sanitary Packaging:</strong> Food must be prepared and packaged in clean, food-grade containers following proper hygiene protocols.
-                      </span>
+                    <li className="flex items-start gap-3 bg-slate-50/70 p-3.5 rounded-2xl border border-slate-100">
+                      <CheckCircle2 className="w-5 h-5 text-emerald-600 flex-shrink-0 mt-0.5" />
+                      <div>
+                        <strong className="font-bold text-slate-900 block mb-0.5">Hygiene & Sanitary Packaging</strong>
+                        <span>Food must be prepared, handled, and packaged in clean, food-grade containers following strict hygiene protocols.</span>
+                      </div>
                     </li>
 
-                    <li className="flex items-start gap-2">
-                      <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0 mt-0.5" />
-                      <span>
-                        <strong className="font-bold text-slate-900">Accurate Preparation Timestamps:</strong> You must accurately report preparation time and expected shelf life when publishing food bundles.
-                      </span>
+                    <li className="flex items-start gap-3 bg-slate-50/70 p-3.5 rounded-2xl border border-slate-100">
+                      <CheckCircle2 className="w-5 h-5 text-emerald-600 flex-shrink-0 mt-0.5" />
+                      <div>
+                        <strong className="font-bold text-slate-900 block mb-0.5">Accurate Preparation Timestamps</strong>
+                        <span>You must accurately state the exact preparation time and expected shelf life when publishing food bundles.</span>
+                      </div>
                     </li>
 
-                    <li className="flex items-start gap-2">
-                      <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0 mt-0.5" />
-                      <span>
-                        <strong className="font-bold text-slate-900">Zero Tolerance for Negligence:</strong> Providing unfit or unsafe food will result in immediate account termination and potential legal action under food safety regulations.
-                      </span>
+                    <li className="flex items-start gap-3 bg-slate-50/70 p-3.5 rounded-2xl border border-slate-100">
+                      <CheckCircle2 className="w-5 h-5 text-emerald-600 flex-shrink-0 mt-0.5" />
+                      <div>
+                        <strong className="font-bold text-slate-900 block mb-0.5">Zero Tolerance for Negligence</strong>
+                        <span>Providing unfit or unsafe food will result in immediate account suspension and potential legal action under food safety regulations.</span>
+                      </div>
                     </li>
                   </ul>
                 </div>
               ) : (
                 /* RECIPIENT GUIDELINES */
-                <div className="space-y-3 text-xs leading-relaxed text-slate-700">
-                  <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-2xl flex items-start gap-2.5 text-emerald-900 font-medium">
+                <div className="space-y-4 text-sm leading-relaxed text-slate-700">
+                  <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-2xl flex items-start gap-3 text-emerald-950 font-medium">
                     <CheckCircle2 className="w-5 h-5 text-emerald-600 flex-shrink-0 mt-0.5" />
                     <span>
                       <strong className="font-bold">Safe Handling Notice:</strong> To ensure community well-being, recipients are required to inspect and handle claimed food responsibly.
                     </span>
                   </div>
 
-                  <ul className="space-y-2.5 pl-1">
-                    <li className="flex items-start gap-2">
-                      <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0 mt-0.5" />
-                      <span>
-                        <strong className="font-bold text-slate-900">Inspect Food Upon Pickup:</strong> Always check packaging integrity, smell, and visual appearance before accepting food items from the donor.
-                      </span>
+                  <ul className="space-y-3 pt-1">
+                    <li className="flex items-start gap-3 bg-slate-50/70 p-3.5 rounded-2xl border border-slate-100">
+                      <CheckCircle2 className="w-5 h-5 text-emerald-600 flex-shrink-0 mt-0.5" />
+                      <div>
+                        <strong className="font-bold text-slate-900 block mb-0.5">Inspect Food Upon Pickup</strong>
+                        <span>Always inspect packaging integrity, smell, and overall appearance before accepting food items from the donor.</span>
+                      </div>
                     </li>
 
-                    <li className="flex items-start gap-2">
-                      <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0 mt-0.5" />
-                      <span>
-                        <strong className="font-bold text-slate-900">Proper Storage & Refrigeration:</strong> Perishable items must be refrigerated or stored at safe temperatures immediately after pickup.
-                      </span>
+                    <li className="flex items-start gap-3 bg-slate-50/70 p-3.5 rounded-2xl border border-slate-100">
+                      <CheckCircle2 className="w-5 h-5 text-emerald-600 flex-shrink-0 mt-0.5" />
+                      <div>
+                        <strong className="font-bold text-slate-900 block mb-0.5">Immediate Storage & Refrigeration</strong>
+                        <span>Perishable items must be refrigerated or stored at safe temperatures immediately after pickup.</span>
+                      </div>
                     </li>
 
-                    <li className="flex items-start gap-2">
-                      <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0 mt-0.5" />
-                      <span>
-                        <strong className="font-bold text-slate-900">Timely Consumption:</strong> Consume or distribute claimed meals within the recommended timeframe specified by the donor.
-                      </span>
+                    <li className="flex items-start gap-3 bg-slate-50/70 p-3.5 rounded-2xl border border-slate-100">
+                      <CheckCircle2 className="w-5 h-5 text-emerald-600 flex-shrink-0 mt-0.5" />
+                      <div>
+                        <strong className="font-bold text-slate-900 block mb-0.5">Timely Consumption</strong>
+                        <span>Consume or distribute claimed meals within the recommended timeframe specified by the donor.</span>
+                      </div>
                     </li>
 
-                    <li className="flex items-start gap-2">
-                      <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0 mt-0.5" />
-                      <span>
-                        <strong className="font-bold text-slate-900">Respectful Coordination:</strong> Arrive on time for agreed pickup slots and maintain professional communication with local businesses and donors.
-                      </span>
+                    <li className="flex items-start gap-3 bg-slate-50/70 p-3.5 rounded-2xl border border-slate-100">
+                      <CheckCircle2 className="w-5 h-5 text-emerald-600 flex-shrink-0 mt-0.5" />
+                      <div>
+                        <strong className="font-bold text-slate-900 block mb-0.5">Respectful Pickup Coordination</strong>
+                        <span>Arrive promptly for agreed pickup slots and maintain courteous, professional communication with donors.</span>
+                      </div>
                     </li>
                   </ul>
                 </div>
               )}
             </div>
 
-            {/* Modal Footer with Required Checkbox & Action Button */}
-            <div className="pt-4 mt-4 border-t border-slate-100 space-y-4">
-              <label className="flex items-start gap-3 cursor-pointer p-3 rounded-xl bg-slate-50 border border-slate-200 hover:bg-slate-100/80 transition">
+            {/* Modal Footer with Required Checkbox & Action Buttons */}
+            <div className="pt-5 mt-5 border-t border-slate-100 space-y-4">
+              <label className="flex items-start gap-3 cursor-pointer p-4 rounded-2xl bg-slate-50 border border-slate-200 hover:bg-slate-100/80 transition">
                 <input
                   type="checkbox"
                   checked={agreedToTerms}
                   onChange={(e) => setAgreedToTerms(e.target.checked)}
-                  className="mt-0.5 w-4 h-4 text-emerald-600 rounded focus:ring-emerald-500 border-slate-300 cursor-pointer"
+                  className="mt-0.5 w-5 h-5 text-emerald-600 rounded focus:ring-emerald-500 border-slate-300 cursor-pointer"
                 />
-                <span className="text-xs font-bold text-slate-800 leading-tight">
+                <span className="text-xs sm:text-sm font-bold text-slate-800 leading-snug">
                   I have read, understood, and agree to strictly comply with all the food safety guidelines listed above.
                 </span>
               </label>
@@ -416,7 +424,7 @@ export default function SignupPage() {
                 <button
                   type="button"
                   onClick={() => setShowModal(false)}
-                  className="w-1/3 py-3 px-4 rounded-xl border border-slate-200 text-slate-600 font-bold text-xs hover:bg-slate-50 transition"
+                  className="w-1/3 py-3.5 px-4 rounded-xl border border-slate-200 text-slate-600 font-bold text-xs sm:text-sm hover:bg-slate-50 transition"
                 >
                   Cancel
                 </button>
@@ -425,7 +433,7 @@ export default function SignupPage() {
                   type="button"
                   disabled={!agreedToTerms || loading}
                   onClick={handleFinalSignUp}
-                  className="w-2/3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 px-4 rounded-xl transition shadow-sm flex items-center justify-center gap-2 text-xs disabled:opacity-50"
+                  className="w-2/3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3.5 px-4 rounded-xl transition shadow-md flex items-center justify-center gap-2 text-xs sm:text-sm disabled:opacity-50"
                 >
                   <span>{loading ? 'Registering Account...' : 'I Agree & Setup Profile'}</span>
                   <ArrowRight className="w-4 h-4" />
