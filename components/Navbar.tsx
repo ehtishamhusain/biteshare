@@ -23,6 +23,7 @@ import {
   AlertTriangle,
   IndianRupee,
   ChevronDown,
+  Store,
 } from 'lucide-react';
 
 export default function Navbar() {
@@ -115,7 +116,9 @@ export default function Navbar() {
     router.refresh();
   };
 
-  const isMoreActive = ['/reviews', '/about', '/contact'].includes(pathname);
+  const isMoreActive = ['/reviews', '/about', '/contact', '/restaurants'].some(
+    (path) => pathname === path || pathname.startsWith('/restaurants/')
+  );
 
   return (
     <>
@@ -224,8 +227,21 @@ export default function Navbar() {
                           animate={{ opacity: 1, scale: 1, y: 0 }}
                           exit={{ opacity: 0, scale: 0.95, y: 8 }}
                           transition={{ duration: 0.15 }}
-                          className="absolute right-0 mt-2 w-48 bg-white rounded-2xl border border-slate-200 shadow-xl py-2 z-50 space-y-0.5"
+                          className="absolute right-0 mt-2 w-52 bg-white rounded-2xl border border-slate-200 shadow-xl py-2 z-50 space-y-0.5"
                         >
+                          <Link
+                            href="/restaurants"
+                            onClick={() => setMoreDropdownOpen(false)}
+                            className={`flex items-center gap-2.5 px-4 py-2.5 text-xs font-bold transition ${
+                              pathname === '/restaurants' || pathname.startsWith('/restaurants/')
+                                ? 'bg-emerald-50 text-emerald-800'
+                                : 'text-slate-700 hover:bg-slate-50'
+                            }`}
+                          >
+                            <Store className="w-4 h-4 text-emerald-600" />
+                            <span>Explore Restaurants</span>
+                          </Link>
+
                           <Link
                             href="/reviews"
                             onClick={() => setMoreDropdownOpen(false)}
@@ -282,6 +298,19 @@ export default function Navbar() {
                   >
                     <Sparkles className="w-4 h-4 text-emerald-600" />
                     <span>Explore Feed</span>
+                  </Link>
+
+                  {/* 🏬 NEW: EXPLORE RESTAURANTS LINK FOR GUESTS & RECIPIENTS */}
+                  <Link
+                    href="/restaurants"
+                    className={`px-3 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
+                      pathname === '/restaurants' || pathname.startsWith('/restaurants/')
+                        ? 'bg-emerald-50 text-emerald-800 font-extrabold'
+                        : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                    }`}
+                  >
+                    <Store className="w-4 h-4 text-emerald-600" />
+                    <span>Explore Restaurants</span>
                   </Link>
 
                   {user && role === 'RECIPIENT' && (
@@ -437,13 +466,23 @@ export default function Navbar() {
             )}
 
             {(!user || role === 'RECIPIENT') && (
-              <Link
-                href="/feed"
-                onClick={() => setMobileMenuOpen(false)}
-                className="block px-4 py-2.5 rounded-xl text-xs font-bold text-slate-700 hover:bg-slate-50"
-              >
-                🥗 Explore Feed
-              </Link>
+              <>
+                <Link
+                  href="/feed"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="block px-4 py-2.5 rounded-xl text-xs font-bold text-slate-700 hover:bg-slate-50"
+                >
+                  🥗 Explore Feed
+                </Link>
+
+                <Link
+                  href="/restaurants"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="block px-4 py-2.5 rounded-xl text-xs font-bold text-slate-700 hover:bg-slate-50"
+                >
+                  🏬 Explore Restaurants
+                </Link>
+              </>
             )}
 
             {user && role === 'RECIPIENT' && (
