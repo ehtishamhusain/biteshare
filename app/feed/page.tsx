@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import dynamic from 'next/dynamic';
@@ -21,6 +21,8 @@ import {
   X,
   Lock,
   Layers,
+  Search,
+  Filter,
 } from 'lucide-react';
 
 const MapView = dynamic(() => import('@/components/MapView'), {
@@ -57,6 +59,10 @@ export default function FeedPage() {
   const [viewMode, setViewMode] = useState<'list' | 'map'>('list');
   const [claimingId, setClaimingId] = useState<string | null>(null);
   const [message, setMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
+
+  // 🔍 Real-time Search & Filter States
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState('ALL');
 
   // 🔢 Track recipient's chosen quantity for each bundle card
   const [selectedQuantities, setSelectedQuantities] = useState<{ [bundleId: string]: number }>({});
@@ -141,6 +147,34 @@ export default function FeedPage() {
       supabase.removeChannel(channel);
     };
   }, []);
+
+  // 🔍 Real-time Search & Category Filtering Logic
+  const filteredBundles = useMemo(() => {
+    return bundles.filter((bundle) => {
+      const query = searchQuery.toLowerCase().trim();
+      const businessName = (
+        bundle.donor?.organization_name ||
+        bundle.donor?.full_name ||
+        ''
+      ).toLowerCase();
+
+      const matchesSearch =
+        query === '' ||
+        (bundle.title && bundle.title.toLowerCase().includes(query)) ||
+        (bundle.description && bundle.description.toLowerCase().includes(query)) ||
+        (bundle.address && bundle.address.toLowerCase().includes(query)) ||
+        businessName.includes(query);
+
+      const isFree = (bundle.price_per_item ?? bundle.price ?? 0) === 0;
+
+      const matchesCategory =
+        selectedCategory === 'ALL' ||
+        (selectedCategory === 'FREE' && isFree) ||
+        (bundle.category && bundle.category.toUpperCase() === selectedCategory);
+
+      return matchesSearch && matchesCategory;
+    });
+  }, [bundles, searchQuery, selectedCategory]);
 
   const handleDirectQtyChange = (bundleId: string, inputVal: string, maxQty: number) => {
     if (inputVal === '') {
@@ -247,7 +281,7 @@ export default function FeedPage() {
 
   return (
     <div className="min-h-screen bg-slate-50 py-8 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-7xl mx-auto space-y-8">
+      <div className="max-w-7xl mx-auto space-y-6">
         {/* Header Banner */}
         <motion.div
           initial={{ opacity: 0, y: -20 }}
@@ -291,6 +325,73 @@ export default function FeedPage() {
           </div>
         </motion.div>
 
+        {/* 🔍 REAL-TIME SEARCH & FILTER BAR */}
+        <div className="bg-white rounded-3xl p-4 sm:p-6 border border-slate-200 shadow-sm space-y-4">
+          <div className="relative">
+            <Search className="w-5 h-5 absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search by food item (e.g. Biryani, Muffins), Restaurant, or Location..."
+              className="w-full pl-12 pr-10 py-3.5 rounded-2xl border border-slate-200 focus:ring-2 focus:ring-emerald-500 outline-none text-sm text-slate-800 bg-slate-50/50"
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery('')}
+                className="absolute right-3.5 top-1/2 -translate-y-1/2 p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-200/60 transition"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2 overflow-x-auto pb-1 text-xs no-scrollbar">
+            <div className="flex items-center gap-1.5 text-slate-400 font-bold uppercase tracking-wider pr-2 border-r border-slate-200">
+              <Filter className="w-3.5 h-3.5 text-emerald-600" />
+              <span>Category:</span>
+            </div>
+
+            {[
+              { key: 'ALL', label: 'All Items' },
+              { key: 'COOKED', label: '🍲 Cooked Meals' },
+              { key: 'BAKERY', label: '🥖 Bakery & Snacks' },
+              { key: 'GROCERY', label: '🍎 Groceries' },
+              { key: 'FREE', label: '🎁 100% Free' },
+            ].map((cat) => (
+              <button
+                key={cat.key}
+                onClick={() => setSelectedCategory(cat.key)}
+                className={`px-3.5 py-2 rounded-xl font-bold whitespace-nowrap transition ${
+                  selectedCategory === cat.key
+                    ? 'bg-emerald-600 text-white shadow-sm'
+                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200/70'
+                }`}
+              >
+                {cat.label}
+              </button>
+            ))}
+          </div>
+
+          {(searchQuery || selectedCategory !== 'ALL') && (
+            <div className="flex items-center justify-between pt-2 border-t border-slate-100 text-xs text-slate-500">
+              <span>
+                Showing <strong className="text-slate-900">{filteredBundles.length}</strong> available listings
+                {searchQuery && <> for "<strong>{searchQuery}</strong>"</>}
+              </span>
+              <button
+                onClick={() => {
+                  setSearchQuery('');
+                  setSelectedCategory('ALL');
+                }}
+                className="text-emerald-600 font-bold hover:underline"
+              >
+                Reset Search Filters
+              </button>
+            </div>
+          )}
+        </div>
+
         {message && (
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
@@ -308,20 +409,35 @@ export default function FeedPage() {
         {/* View Selection */}
         {viewMode === 'map' ? (
           <div className="bg-white p-4 rounded-3xl shadow-sm border border-slate-200">
-            <MapView bundles={bundles} onClaim={(id) => handleClaim(bundles.find((b) => b.id === id))} />
+            <MapView bundles={filteredBundles} onClaim={(id) => handleClaim(bundles.find((b) => b.id === id))} />
           </div>
         ) : loading ? (
           <div className="flex flex-col items-center justify-center py-16 text-slate-500">
             <RefreshCw className="w-8 h-8 animate-spin text-emerald-600 mb-3" />
             <p className="text-sm font-medium">Loading live surplus food listings...</p>
           </div>
-        ) : bundles.length === 0 ? (
+        ) : filteredBundles.length === 0 ? (
           <div className="bg-white rounded-3xl p-12 text-center border border-slate-200 shadow-sm max-w-lg mx-auto space-y-3">
             <Utensils className="w-12 h-12 text-slate-300 mx-auto" />
-            <h3 className="text-lg font-bold text-slate-800">No active food bundles found</h3>
+            <h3 className="text-lg font-bold text-slate-800">
+              {searchQuery || selectedCategory !== 'ALL' ? 'No matching food items found' : 'No active food bundles found'}
+            </h3>
             <p className="text-slate-500 text-sm">
-              Check back shortly! New surplus food listings appear here automatically in real time.
+              {searchQuery || selectedCategory !== 'ALL'
+                ? `Try adjusting your search query "${searchQuery}" or category filter.`
+                : 'Check back shortly! New surplus food listings appear here automatically in real time.'}
             </p>
+            {(searchQuery || selectedCategory !== 'ALL') && (
+              <button
+                onClick={() => {
+                  setSearchQuery('');
+                  setSelectedCategory('ALL');
+                }}
+                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl transition mt-2"
+              >
+                Clear Search & Show All
+              </button>
+            )}
           </div>
         ) : (
           <motion.div
@@ -330,7 +446,7 @@ export default function FeedPage() {
             animate="visible"
             variants={staggerContainer}
           >
-            {bundles.map((bundle) => {
+            {filteredBundles.map((bundle) => {
               const businessName =
                 bundle.donor?.organization_name ||
                 bundle.donor?.full_name ||
