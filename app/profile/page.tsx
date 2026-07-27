@@ -48,6 +48,11 @@ export default function ProfilePage() {
       return;
     }
 
+    if (user.user_metadata?.role) {
+      const metaRole = String(user.user_metadata.role).toUpperCase();
+      setRole(metaRole === 'DONOR' ? 'DONOR' : 'RECIPIENT');
+    }
+
     const { data: profile, error } = await supabase
       .from('profiles')
       .select('*')
@@ -84,8 +89,10 @@ export default function ProfilePage() {
       return;
     }
 
-    // Prepare update data payload
-    const updatePayload: any = {
+    const upsertPayload: any = {
+      id: user.id,
+      email: user.email,
+      role: role,
       full_name: fullName.trim(),
       organization_name: organizationName.trim(),
       phone: phone.trim(),
@@ -94,19 +101,28 @@ export default function ProfilePage() {
       state: state.trim(),
       pincode: pincode.trim(),
       country: country.trim(),
+      updated_at: new Date().toISOString(),
     };
 
     const { error } = await supabase
       .from('profiles')
-      .update(updatePayload)
-      .eq('id', user.id);
+      .upsert(upsertPayload);
 
     if (error) {
       setMessage({ text: 'Error saving profile: ' + error.message, type: 'error' });
+      setSaving(false);
     } else {
-      setMessage({ text: '🎉 Profile updated successfully!', type: 'success' });
+      setMessage({ text: '🎉 Profile saved! Redirecting to your dashboard...', type: 'success' });
+
+      // STEP 2 COMPLETE: Role-based navigation after profile save
+      setTimeout(() => {
+        if (role === 'DONOR') {
+          router.push('/donor/dashboard'); // Navigates to Publish Bundle page (app/donor/dashboard/page.tsx)
+        } else {
+          router.push('/feed'); // Navigates to Explore Feed page (app/feed/page.tsx)
+        }
+      }, 1000);
     }
-    setSaving(false);
   };
 
   return (
