@@ -24,6 +24,7 @@ import {
   MessageSquare,
   Send,
   AlertCircle,
+  Layers,
 } from 'lucide-react';
 
 export default function SingleRestaurantPage() {
@@ -41,6 +42,9 @@ export default function SingleRestaurantPage() {
   const [claimingId, setClaimingId] = useState<string | null>(null);
   const [message, setMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
   const [showAuthModal, setShowAuthModal] = useState(false);
+
+  // 🔢 Quantity selector state for each food bundle
+  const [selectedQuantities, setSelectedQuantities] = useState<{ [bundleId: string]: number }>({});
 
   // Review Form Modal States
   const [showReviewModal, setShowReviewModal] = useState(false);
@@ -78,6 +82,13 @@ export default function SingleRestaurantPage() {
     if (foodItems) {
       const processed = foodItems.filter((b) => (Number(b.quantity_remaining) ?? 1) > 0);
       setBundles(processed);
+
+      // Initialize selected quantities map to 1 for each bundle
+      const initialQtyMap: { [key: string]: number } = {};
+      processed.forEach((b) => {
+        initialQtyMap[b.id] = 1;
+      });
+      setSelectedQuantities(initialQtyMap);
     }
 
     // 3. Fetch Reviews
@@ -105,12 +116,41 @@ export default function SingleRestaurantPage() {
     }
   };
 
+  // 🔢 Quantity Handler Functions
+  const handleDirectQtyChange = (bundleId: string, inputVal: string, maxQty: number) => {
+    if (inputVal === '') {
+      setSelectedQuantities((prev) => ({ ...prev, [bundleId]: 0 }));
+      return;
+    }
+
+    let parsed = parseInt(inputVal, 10);
+    if (isNaN(parsed)) parsed = 1;
+    if (parsed > maxQty) parsed = maxQty;
+
+    setSelectedQuantities((prev) => ({ ...prev, [bundleId]: parsed }));
+  };
+
+  const handleSelectAll = (bundleId: string, maxQty: number) => {
+    setSelectedQuantities((prev) => ({ ...prev, [bundleId]: maxQty }));
+  };
+
+  // 🛍️ Claim Food with Custom Quantity and Financial Calculation
   const handleClaim = async (bundle: any) => {
     const bundleId = bundle.id;
-    const remainingQty = bundle.quantity_remaining || 1;
-    const pricePerUnit = bundle.price_per_item ?? bundle.price ?? 0;
-    const totalPrice = pricePerUnit;
+    const remainingQty = Number(bundle.quantity_remaining) || 1;
+    const rawSelectedQty = selectedQuantities[bundleId] || 1;
+    const claimQty = Math.max(1, Math.min(rawSelectedQty, remainingQty));
 
+    const pricePerUnit = bundle.price_per_item ?? bundle.price ?? 0;
+    const bulkTotalPrice = bundle.price ?? 0;
+
+    const isFullBatch = claimQty === remainingQty;
+    const hasBulkDiscount =
+      isFullBatch && bulkTotalPrice > 0 && bulkTotalPrice < claimQty * pricePerUnit;
+
+    const totalPrice = hasBulkDiscount ? bulkTotalPrice : claimQty * pricePerUnit;
+
+    // 💰 Calculate 10% Platform Fee and 90% Donor Payout
     const platformFee = totalPrice > 0 ? totalPrice * 0.10 : 0;
     const donorPayout = totalPrice > 0 ? totalPrice * 0.90 : 0;
 
@@ -130,7 +170,7 @@ export default function SingleRestaurantPage() {
     const { error: claimError } = await supabase.from('claims').insert({
       bundle_id: bundleId,
       recipient_id: user.id,
-      claimed_quantity: 1,
+      claimed_quantity: claimQty,
       total_price: totalPrice,
       platform_fee: platformFee,
       donor_payout: donorPayout,
@@ -144,7 +184,7 @@ export default function SingleRestaurantPage() {
       return;
     }
 
-    const newRemaining = remainingQty - 1;
+    const newRemaining = remainingQty - claimQty;
     await supabase
       .from('food_bundles')
       .update({
@@ -154,7 +194,7 @@ export default function SingleRestaurantPage() {
       .eq('id', bundleId);
 
     setMessage({
-      text: `🎉 Order Reserved! Present PIN: ${generatedPin} at store counter.`,
+      text: `🎉 Reserved ${claimQty} item(s) for ₹${totalPrice}! PIN: ${generatedPin}. Check "My Claims" for details.`,
       type: 'success',
     });
 
@@ -309,7 +349,16 @@ export default function SingleRestaurantPage() {
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {bundles.map((bundle) => {
-                const price = bundle.price_per_item ?? bundle.price ?? 0;
+                const remainingQty = Number(bundle.quantity_remaining) || 1;
+                const selectedQty = Math.max(1, Math.min(selectedQuantities[bundle.id] ?? 1, remainingQty));
+                const pricePerUnit = bundle.price_per_item ?? bundle.price ?? 0;
+                const bulkTotalPrice = bundle.price ?? 0;
+
+                const isFullBatchSelected = selectedQty === remainingQty;
+                const hasBulkDiscount =
+                  isFullBatchSelected && bulkTotalPrice > 0 && bulkTotalPrice < selectedQty * pricePerUnit;
+
+                const calculatedTotal = hasBulkDiscount ? bulkTotalPrice : selectedQty * pricePerUnit;
 
                 return (
                   <div
@@ -317,20 +366,28 @@ export default function SingleRestaurantPage() {
                     className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-xs hover:shadow-md transition flex flex-col justify-between"
                   >
                     <div className="p-6 space-y-3">
-                      <div className="flex justify-between items-center">
-                        <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider bg-emerald-100 text-emerald-800 border border-emerald-200">
-                          <Tag className="w-3.5 h-3.5" /> {bundle.quantity_remaining || 1} Remaining
+                      <div className="flex justify-between items-start">
+                        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-emerald-100 text-emerald-800 border border-emerald-200">
+                          <Tag className="w-3.5 h-3.5" /> {remainingQty} Servings Left
                         </span>
 
-                        <span
-                          className={`font-black text-sm px-2.5 py-0.5 rounded-lg border ${
-                            price === 0
-                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                              : 'bg-slate-100 text-slate-800 border-slate-200'
-                          }`}
-                        >
-                          {price === 0 ? '🎁 FREE' : `₹${price}`}
-                        </span>
+                        <div className="text-right space-y-1">
+                          <span
+                            className={`font-black text-sm px-2.5 py-0.5 rounded-lg border inline-block ${
+                              pricePerUnit === 0
+                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                : 'bg-slate-100 text-slate-800 border-slate-200'
+                            }`}
+                          >
+                            {pricePerUnit === 0 ? '🎁 FREE' : `₹${pricePerUnit} / item`}
+                          </span>
+
+                          {bulkTotalPrice > 0 && bulkTotalPrice < remainingQty * pricePerUnit && (
+                            <div className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-md">
+                              All {remainingQty} for ₹{bulkTotalPrice} Deal
+                            </div>
+                          )}
+                        </div>
                       </div>
 
                       <h3 className="text-lg font-bold text-slate-900">{bundle.title}</h3>
@@ -351,13 +408,54 @@ export default function SingleRestaurantPage() {
                       </div>
                     </div>
 
-                    <div className="p-4 bg-slate-50 border-t border-slate-100">
+                    {/* Quantity Selection Bar & Dynamic Claim Button */}
+                    <div className="p-4 bg-slate-50 border-t border-slate-100 space-y-3">
+                      <div className="flex items-center justify-between bg-white px-3.5 py-2.5 rounded-2xl border border-slate-200 shadow-xs">
+                        <div className="flex flex-col">
+                          <span className="text-xs font-bold text-slate-700 flex items-center gap-1">
+                            <Layers className="w-3.5 h-3.5 text-emerald-600" />
+                            <span>Quantity</span>
+                          </span>
+                          <span className="text-[10px] text-slate-500 font-semibold">
+                            Available: <span className="font-extrabold text-emerald-700">{remainingQty} items</span>
+                          </span>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="number"
+                            min="1"
+                            max={remainingQty}
+                            value={selectedQuantities[bundle.id] ?? 1}
+                            onChange={(e) =>
+                              handleDirectQtyChange(bundle.id, e.target.value, remainingQty)
+                            }
+                            className="w-16 px-2 py-1.5 text-center font-black text-sm text-slate-900 bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none transition"
+                          />
+
+                          <button
+                            type="button"
+                            onClick={() => handleSelectAll(bundle.id, remainingQty)}
+                            className="px-2.5 py-1.5 text-[11px] font-black uppercase tracking-wider bg-emerald-100 hover:bg-emerald-200 text-emerald-800 rounded-xl border border-emerald-300 transition shadow-xs"
+                            title="Select all available items"
+                          >
+                            All ({remainingQty})
+                          </button>
+                        </div>
+                      </div>
+
                       <button
                         onClick={() => handleClaim(bundle)}
                         disabled={claimingId === bundle.id}
-                        className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold py-3 px-4 rounded-xl transition shadow-xs text-xs flex items-center justify-center gap-2 disabled:opacity-50"
+                        className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold py-3.5 px-4 rounded-xl transition shadow-xs text-sm flex items-center justify-center gap-2 disabled:opacity-50"
                       >
-                        {claimingId === bundle.id ? 'Reserving...' : 'Reserve & Generate Pickup PIN'}
+                        {claimingId === bundle.id
+                          ? 'Reserving...'
+                          : calculatedTotal > 0
+                          ? hasBulkDiscount
+                            ? `💥 Claim All ${selectedQty} for ₹${calculatedTotal} (Bulk Discount!)`
+                            : `Claim ${selectedQty} item(s) for ₹${calculatedTotal}`
+                          : `Claim ${selectedQty} Free Item(s)`}
                       </button>
                     </div>
                   </div>
@@ -367,9 +465,7 @@ export default function SingleRestaurantPage() {
           )}
         </div>
 
-        {/* ========================================================================= */}
-        {/* REVIEWS & RATINGS SECTION                                                 */}
-        {/* ========================================================================= */}
+        {/* REVIEWS & RATINGS SECTION */}
         <div className="space-y-4 pt-6 border-t border-slate-200">
           <div className="flex items-center justify-between">
             <h2 className="text-xl font-black text-slate-900 tracking-tight flex items-center gap-2">
@@ -429,9 +525,7 @@ export default function SingleRestaurantPage() {
 
       </div>
 
-      {/* ========================================================================= */}
-      {/* WRITE A REVIEW MODAL                                                     */}
-      {/* ========================================================================= */}
+      {/* WRITE A REVIEW MODAL */}
       <AnimatePresence>
         {showReviewModal && (
           <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
@@ -462,7 +556,6 @@ export default function SingleRestaurantPage() {
                   </div>
                 )}
 
-                {/* Rating Selector */}
                 <div>
                   <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">
                     Select Your Rating
@@ -487,7 +580,6 @@ export default function SingleRestaurantPage() {
                   </div>
                 </div>
 
-                {/* Comment Field */}
                 <div>
                   <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">
                     Your Review Feedback
