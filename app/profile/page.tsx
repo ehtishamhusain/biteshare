@@ -14,6 +14,7 @@ import {
   Shield,
   Globe,
   RefreshCw,
+  Store,
 } from 'lucide-react';
 
 export default function ProfilePage() {
@@ -89,6 +90,30 @@ export default function ProfilePage() {
       return;
     }
 
+    // 🔒 Validation Check 1: Full Name
+    if (!fullName.trim()) {
+      setMessage({ text: 'Please enter your Full Name before saving.', type: 'error' });
+      setSaving(false);
+      return;
+    }
+
+    // 🔒 Validation Check 2: Phone Number
+    if (!phone.trim()) {
+      setMessage({ text: 'Please enter your Phone Number before saving.', type: 'error' });
+      setSaving(false);
+      return;
+    }
+
+    // 🔒 Validation Check 3: Restaurant / Organization Name for Donors
+    if (role === 'DONOR' && !organizationName.trim()) {
+      setMessage({
+        text: 'Please enter your Restaurant / Business Name before saving.',
+        type: 'error',
+      });
+      setSaving(false);
+      return;
+    }
+
     const upsertPayload: any = {
       id: user.id,
       email: user.email,
@@ -114,12 +139,11 @@ export default function ProfilePage() {
     } else {
       setMessage({ text: '🎉 Profile saved! Redirecting to your dashboard...', type: 'success' });
 
-      // STEP 2 COMPLETE: Role-based navigation after profile save
       setTimeout(() => {
         if (role === 'DONOR') {
-          router.push('/donor/dashboard'); // Navigates to Publish Bundle page (app/donor/dashboard/page.tsx)
+          router.push('/donor/dashboard');
         } else {
-          router.push('/feed'); // Navigates to Explore Feed page (app/feed/page.tsx)
+          router.push('/feed');
         }
       }, 1000);
     }
@@ -177,9 +201,10 @@ export default function ProfilePage() {
 
               {/* Personal / Business Name */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {/* 👤 FULL NAME (REQUIRED) */}
                 <div>
                   <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">
-                    Full Name
+                    Full Name <span className="text-red-500">*</span>
                   </label>
                   <div className="relative">
                     <input
@@ -194,27 +219,47 @@ export default function ProfilePage() {
                   </div>
                 </div>
 
+                {/* 🏬 RESTAURANT / ORGANIZATION NAME (REQUIRED FOR DONORS) */}
                 <div>
                   <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">
-                    Organization / Shelter Name
+                    {role === 'DONOR' ? (
+                      <span>
+                        Restaurant / Bakery Name <span className="text-red-500">*</span>
+                      </span>
+                    ) : (
+                      <span>Organization / Shelter Name</span>
+                    )}
                   </label>
                   <div className="relative">
                     <input
                       type="text"
+                      required={role === 'DONOR'}
                       value={organizationName}
                       onChange={(e) => setOrganizationName(e.target.value)}
-                      placeholder="e.g. Community Shelter"
-                      className="w-full px-4 py-3 pl-10 rounded-xl border border-slate-200 focus:ring-2 focus:ring-emerald-500 outline-none text-sm text-slate-800 bg-slate-50/50"
+                      placeholder={
+                        role === 'DONOR'
+                          ? 'e.g. Royal Bakery & Cafe'
+                          : 'e.g. Community Shelter'
+                      }
+                      className={`w-full px-4 py-3 pl-10 rounded-xl border focus:ring-2 focus:ring-emerald-500 outline-none text-sm text-slate-800 bg-slate-50/50 ${
+                        role === 'DONOR' && !organizationName.trim()
+                          ? 'border-amber-300'
+                          : 'border-slate-200'
+                      }`}
                     />
-                    <Building className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                    {role === 'DONOR' ? (
+                      <Store className="w-4 h-4 text-emerald-600 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                    ) : (
+                      <Building className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                    )}
                   </div>
                 </div>
               </div>
 
-              {/* Phone Number */}
+              {/* 📞 PHONE NUMBER (REQUIRED) */}
               <div>
                 <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">
-                  Phone Number
+                  Phone Number <span className="text-red-500">*</span>
                 </label>
                 <div className="relative">
                   <input

@@ -112,11 +112,11 @@ export default function DonorEarningsPage() {
     setUpdatingUpi(false);
   };
 
-  // 📊 Calculate Financial Metrics
+  // 📊 Calculate Financial Metrics with 12% Platform Fee
   const totalSalesGross = claims.reduce((sum, c) => sum + (Number(c.total_price) || 0), 0);
   const totalPlatformFees = claims.reduce((sum, c) => {
     const total = Number(c.total_price) || 0;
-    const fee = c.platform_fee ? Number(c.platform_fee) : total * 0.10; // 10% commission
+    const fee = c.platform_fee ? Number(c.platform_fee) : total * 0.12; // 12% commission
     return sum + fee;
   }, 0);
 
@@ -142,7 +142,7 @@ export default function DonorEarningsPage() {
               Revenue & Commission Analytics
             </h1>
             <p className="text-slate-600 text-sm mt-1">
-              Monitor recouped food costs, net payouts, and 10% BiteShare service fee breakdowns.
+              Monitor recouped food costs, net payouts, and 12% BiteShare service fee breakdowns.
             </p>
           </div>
         </motion.div>
@@ -188,13 +188,13 @@ export default function DonorEarningsPage() {
             <p className="text-[11px] text-slate-500">Total revenue generated on feed</p>
           </motion.div>
 
-          {/* BiteShare Commission (10%) */}
+          {/* BiteShare Commission (12%) */}
           <motion.div
             variants={fadeInUp}
             className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-2"
           >
             <div className="flex items-center justify-between text-amber-700 text-xs font-bold uppercase tracking-wider">
-              <span>BiteShare Fee (10%)</span>
+              <span>BiteShare Fee (12%)</span>
               <div className="p-2 rounded-xl bg-amber-50 text-amber-600 border border-amber-200">
                 <Percent className="w-4 h-4" />
               </div>
@@ -203,13 +203,13 @@ export default function DonorEarningsPage() {
             <p className="text-[11px] text-slate-500">Platform operational cut</p>
           </motion.div>
 
-          {/* Net Store Payout */}
+          {/* Net Store Payout (88%) */}
           <motion.div
             variants={fadeInUp}
             className="bg-emerald-600 text-white p-6 rounded-3xl shadow-lg shadow-emerald-600/20 space-y-2"
           >
             <div className="flex items-center justify-between text-emerald-100 text-xs font-bold uppercase tracking-wider">
-              <span>Net Store Earnings (90%)</span>
+              <span>Net Store Earnings (88%)</span>
               <div className="p-2 rounded-xl bg-emerald-500/30 text-white border border-emerald-400/30">
                 <TrendingUp className="w-4 h-4" />
               </div>
@@ -280,7 +280,7 @@ export default function DonorEarningsPage() {
               <FileText className="w-5 h-5 text-emerald-600" />
               <h3 className="text-lg font-extrabold text-slate-900">Recent Sales & Payout Ledger</h3>
             </div>
-            <span className="text-xs text-slate-500 font-semibold">10% Platform Service Fee Applied</span>
+            <span className="text-xs text-slate-500 font-semibold">12% Platform Service Fee Applied</span>
           </div>
 
           {loading ? (
@@ -302,15 +302,15 @@ export default function DonorEarningsPage() {
                     <th className="py-3 px-2">Item Title</th>
                     <th className="py-3 px-2">Qty</th>
                     <th className="py-3 px-2">Gross Sale</th>
-                    <th className="py-3 px-2">BiteShare Cut (10%)</th>
-                    <th className="py-3 px-2">Net Store Payout (90%)</th>
+                    <th className="py-3 px-2">BiteShare Cut (12%)</th>
+                    <th className="py-3 px-2">Net Store Payout (88%)</th>
                     <th className="py-3 px-2">Status</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
                   {claims.map((claim) => {
                     const gross = Number(claim.total_price) || 0;
-                    const fee = claim.platform_fee ? Number(claim.platform_fee) : gross * 0.10;
+                    const fee = claim.platform_fee ? Number(claim.platform_fee) : gross * 0.12;
                     const net = gross - fee;
 
                     return (

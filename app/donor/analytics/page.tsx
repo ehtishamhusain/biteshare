@@ -45,32 +45,61 @@ export default function DonorAnalyticsPage() {
       return;
     }
 
+    // 1. Fetch all food bundles for this donor
     const { data: bundles } = await supabase
       .from('food_bundles')
       .select('*')
       .eq('donor_id', user.id);
 
-    if (bundles) {
-      const completedOrClaimed = bundles.filter(
-        (b) => b.status === 'CLAIMED' || b.status === 'PICKED_UP'
-      );
+    if (bundles && bundles.length > 0) {
+      const bundleIds = bundles.map((b) => b.id);
+
+      // 2. Fetch completed claims associated with these bundles
+      const { data: claims } = await supabase
+        .from('claims')
+        .select('*')
+        .in('bundle_id', bundleIds);
 
       let meals = 0;
       let revenue = 0;
 
-      completedOrClaimed.forEach((b) => {
-        const qty = parseInt(b.quantity) || 1;
-        meals += qty;
-        revenue += b.price || 0;
-      });
+      if (claims && claims.length > 0) {
+        // Filter for completed pickups (case-insensitive)
+        const completed = claims.filter(
+          (c) => String(c.status).toUpperCase() === 'COMPLETED'
+        );
 
+        completed.forEach((c) => {
+          const qty = parseInt(c.claimed_quantity) || 1;
+          meals += qty;
+          revenue += Number(c.total_price) || 0;
+        });
+      } else {
+        // Fallback check on bundle status
+        const claimedBundles = bundles.filter(
+          (b) => b.status === 'CLAIMED' || b.status === 'PICKED_UP'
+        );
+        claimedBundles.forEach((b) => {
+          meals += parseInt(b.quantity) || 1;
+          revenue += Number(b.price) || 0;
+        });
+      }
+
+      // 2.5 kg CO2 saved per meal rescued
       const co2 = meals * 2.5;
 
       setStats({
         totalBundles: bundles.length,
         totalMeals: meals,
         co2SavedKg: Math.round(co2 * 10) / 10,
-        totalRevenue: revenue,
+        totalRevenue: Math.round(revenue),
+      });
+    } else {
+      setStats({
+        totalBundles: 0,
+        totalMeals: 0,
+        co2SavedKg: 0,
+        totalRevenue: 0,
       });
     }
 
@@ -80,6 +109,7 @@ export default function DonorAnalyticsPage() {
   return (
     <div className="min-h-screen bg-slate-50 py-8 px-4 sm:px-6 lg:px-8">
       <div className="max-w-5xl mx-auto space-y-8">
+        
         {/* Header */}
         <motion.div
           initial={{ opacity: 0, y: -15 }}
@@ -90,9 +120,9 @@ export default function DonorAnalyticsPage() {
           <div>
             <Link
               href="/donor/dashboard"
-              className="inline-flex items-center gap-2 text-xs font-bold text-emerald-700 hover:text-emerald-800 mb-2"
+              className="inline-flex items-center gap-2 text-xs font-bold text-slate-600 hover:text-slate-900 mb-2 transition"
             >
-              <ArrowLeft className="w-3.5 h-3.5" /> Back to Publishing Station
+              <ArrowLeft className="w-3.5 h-3.5 text-slate-500" /> Back to Publishing Station
             </Link>
             <h1 className="text-3xl font-black text-slate-900">
               Donor Sustainability & Impact Analytics
@@ -101,12 +131,20 @@ export default function DonorAnalyticsPage() {
               Track your environmental contribution, meals rescued, and revenue generated on BiteShare.
             </p>
           </div>
+
+          <button
+            onClick={fetchAnalytics}
+            className="px-4 py-2.5 bg-white hover:bg-slate-100 text-slate-800 font-bold text-xs rounded-xl border border-slate-200 transition flex items-center gap-2 self-start sm:self-auto"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 text-slate-600 ${loading ? 'animate-spin' : ''}`} />
+            <span>Refresh Analytics</span>
+          </button>
         </motion.div>
 
         {loading ? (
-          <div className="bg-white rounded-3xl p-12 text-center border border-slate-200 shadow-sm flex flex-col items-center justify-center">
+          <div className="bg-white rounded-3xl p-12 text-center border border-slate-200 shadow-xs flex flex-col items-center justify-center">
             <RefreshCw className="w-8 h-8 animate-spin text-emerald-600 mb-3" />
-            <p className="text-slate-500 text-sm">Calculating sustainability metrics...</p>
+            <p className="text-slate-500 text-sm font-semibold">Calculating sustainability metrics...</p>
           </div>
         ) : (
           <div className="space-y-8">
@@ -117,13 +155,16 @@ export default function DonorAnalyticsPage() {
               animate="visible"
               variants={staggerContainer}
             >
+              {/* Meals Rescued */}
               <motion.div
                 variants={fadeInUp}
                 whileHover={{ y: -5 }}
-                className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm relative overflow-hidden transition"
+                className="bg-white rounded-3xl p-6 border border-slate-200 shadow-xs relative overflow-hidden transition"
               >
                 <div className="flex justify-between items-center mb-4">
-                  <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Meals Rescued</span>
+                  <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                    Meals Rescued
+                  </span>
                   <div className="p-3 bg-emerald-100 text-emerald-700 rounded-2xl">
                     <Utensils className="w-6 h-6" />
                   </div>
@@ -134,13 +175,16 @@ export default function DonorAnalyticsPage() {
                 </p>
               </motion.div>
 
+              {/* CO2 Offset */}
               <motion.div
                 variants={fadeInUp}
                 whileHover={{ y: -5 }}
-                className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm relative overflow-hidden transition"
+                className="bg-white rounded-3xl p-6 border border-slate-200 shadow-xs relative overflow-hidden transition"
               >
                 <div className="flex justify-between items-center mb-4">
-                  <span className="text-xs font-bold uppercase tracking-wider text-slate-500">CO₂ Offset</span>
+                  <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                    CO₂ Offset
+                  </span>
                   <div className="p-3 bg-teal-100 text-teal-700 rounded-2xl">
                     <Leaf className="w-6 h-6" />
                   </div>
@@ -153,13 +197,16 @@ export default function DonorAnalyticsPage() {
                 </p>
               </motion.div>
 
+              {/* Revenue Earned */}
               <motion.div
                 variants={fadeInUp}
                 whileHover={{ y: -5 }}
-                className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm relative overflow-hidden transition"
+                className="bg-white rounded-3xl p-6 border border-slate-200 shadow-xs relative overflow-hidden transition"
               >
                 <div className="flex justify-between items-center mb-4">
-                  <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Revenue Earned</span>
+                  <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                    Revenue Earned
+                  </span>
                   <div className="p-3 bg-amber-100 text-amber-700 rounded-2xl">
                     <IndianRupee className="w-6 h-6" />
                   </div>
@@ -180,19 +227,24 @@ export default function DonorAnalyticsPage() {
                 <div className="inline-flex items-center gap-2 bg-emerald-500/30 backdrop-blur-md px-3.5 py-1 rounded-full text-xs font-bold uppercase tracking-wider mb-3 border border-emerald-400/30">
                   🌿 Zero Waste Partner Status
                 </div>
-                <h2 className="text-2xl font-bold">You've saved {stats.co2SavedKg} kg of CO₂ emissions!</h2>
+                <h2 className="text-2xl font-bold text-white">
+                  You've saved {stats.co2SavedKg} kg of CO₂ emissions!
+                </h2>
                 <p className="text-emerald-100 text-sm mt-1 max-w-xl">
                   By redirecting surplus food to community members, your business directly reduces methane gas emissions generated by organic waste.
                 </p>
               </div>
 
               <div className="bg-white/10 backdrop-blur-md p-6 rounded-2xl border border-white/20 text-center min-w-[200px]">
-                <div className="text-4xl font-black text-emerald-200">{stats.totalBundles}</div>
-                <div className="text-xs font-bold uppercase tracking-wider text-emerald-100 mt-1">Total Bundles Posted</div>
+                <div className="text-4xl font-black text-white">{stats.totalBundles}</div>
+                <div className="text-xs font-bold uppercase tracking-wider text-emerald-100 mt-1">
+                  Total Bundles Posted
+                </div>
               </div>
             </motion.div>
           </div>
         )}
+
       </div>
     </div>
   );
