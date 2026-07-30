@@ -2,10 +2,12 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { motion, AnimatePresence, Variants } from 'framer-motion';
+import { motion, Variants } from 'framer-motion';
 import { supabase } from '@/lib/supabase';
 import MissionSection from '@/components/MissionSection';
 import EcosystemSection from '@/components/EcosystemSection';
+import HowItWorksSection from '@/components/HowItWorksSection';
+import FeaturesSection from '@/components/FeaturesSection';
 import FaqSection from '@/components/FaqSection';
 import FounderNote from '@/components/FounderNote';
 import NewsletterSection from '@/components/NewsletterSection';
@@ -19,8 +21,6 @@ import {
   Clock,
   CheckCircle2,
   ChevronRight,
-  QrCode,
-  TrendingUp,
   Building,
   RefreshCw,
 } from 'lucide-react';
@@ -44,7 +44,6 @@ const staggerContainer: Variants = {
 };
 
 export default function Home() {
-  const [activeTab, setActiveTab] = useState<'donors' | 'recipients'>('donors');
   const [latestBundle, setLatestBundle] = useState<any>(null);
   const [loadingBundle, setLoadingBundle] = useState(true);
 
@@ -110,7 +109,7 @@ export default function Home() {
               {/* Pulsing Pill Badge */}
               <motion.div
                 variants={fadeInUp}
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-emerald-100/80 border border-emerald-200 text-emerald-800 text-xs font-bold uppercase tracking-widest shadow-sm"
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-emerald-100/80 border border-emerald-200 text-emerald-800 text-xs font-bold uppercase tracking-widest shadow-xs"
               >
                 <span className="relative flex h-2 w-2">
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-500 opacity-75"></span>
@@ -154,7 +153,7 @@ export default function Home() {
 
                 <Link
                   href="/signup"
-                  className="w-full sm:w-auto px-8 py-4 bg-white hover:bg-slate-100 text-slate-800 font-bold text-sm sm:text-base rounded-2xl border border-slate-200 shadow-sm transition-all duration-300 hover:scale-[1.02] flex items-center justify-center gap-2"
+                  className="w-full sm:w-auto px-8 py-4 bg-white hover:bg-slate-100 text-slate-800 font-bold text-sm sm:text-base rounded-2xl border border-slate-200 shadow-xs transition-all duration-300 hover:scale-[1.02] flex items-center justify-center gap-2"
                 >
                   <Utensils className="w-4 h-4 text-emerald-600" />
                   <span>Become a Food Donor</span>
@@ -291,7 +290,7 @@ export default function Home() {
         </section>
 
         {/* 📊 Impact Metrics Bar */}
-        <section className="border-y border-slate-200 bg-white py-12 shadow-sm">
+        <section className="border-y border-slate-200 bg-white py-12 shadow-xs">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <motion.div
               className="grid grid-cols-2 md:grid-cols-4 gap-8 text-center"
@@ -337,177 +336,11 @@ export default function Home() {
         {/* 💰 FAIR BUSINESS MODEL & ECOSYSTEM SECTION */}
         <EcosystemSection />
 
-        {/* 🔄 Interactive "How It Works" Tab Switcher */}
-        <section className="py-20 sm:py-28 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center max-w-3xl mx-auto mb-12 space-y-4">
-            <h2 className="text-3xl sm:text-4xl font-black text-slate-900 tracking-tight">
-              How BiteShare Works
-            </h2>
-            <p className="text-slate-600 text-sm sm:text-base">
-              A seamless two-sided marketplace designed for instant food redirection and secure store handshakes.
-            </p>
+        {/* ⚡ REDESIGNED ANIMATED "HOW IT WORKS" SECTION */}
+        <HowItWorksSection />
 
-            {/* Tab Switcher */}
-            <div className="inline-flex p-1.5 rounded-2xl bg-slate-200/80 border border-slate-300 mt-4">
-              <button
-                onClick={() => setActiveTab('donors')}
-                className={`px-6 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all duration-300 ${
-                  activeTab === 'donors'
-                    ? 'bg-white text-emerald-800 shadow-md'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                For Restaurants & Bakeries (Donors)
-              </button>
-              <button
-                onClick={() => setActiveTab('recipients')}
-                className={`px-6 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all duration-300 ${
-                  activeTab === 'recipients'
-                    ? 'bg-white text-emerald-800 shadow-md'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                For Community & Shelters (Recipients)
-              </button>
-            </div>
-          </div>
-
-          {/* Animated Tab Contents */}
-          <AnimatePresence mode="wait">
-            {activeTab === 'donors' ? (
-              <motion.div
-                key="donors"
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: 20 }}
-                transition={{ duration: 0.4 }}
-                className="grid grid-cols-1 md:grid-cols-3 gap-8"
-              >
-                <div className="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm relative space-y-4 hover:border-emerald-500/40 transition">
-                  <div className="w-12 h-12 rounded-2xl bg-emerald-100 text-emerald-700 flex items-center justify-center font-black text-lg border border-emerald-200">
-                    01
-                  </div>
-                  <h3 className="text-lg font-extrabold text-slate-900">Publish Surplus Food</h3>
-                  <p className="text-slate-600 text-sm leading-relaxed">
-                    Post remaining bakery items, meals, or fresh produce in under 30 seconds with custom pricing (Free or discounted in ₹).
-                  </p>
-                </div>
-
-                <div className="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm relative space-y-4 hover:border-emerald-500/40 transition">
-                  <div className="w-12 h-12 rounded-2xl bg-emerald-100 text-emerald-700 flex items-center justify-center font-black text-lg border border-emerald-200">
-                    02
-                  </div>
-                  <h3 className="text-lg font-extrabold text-slate-900">Receive Reservations</h3>
-                  <p className="text-slate-600 text-sm leading-relaxed">
-                    Nearby community members or shelters reserve your bundle in real time via our WebSocket live feed.
-                  </p>
-                </div>
-
-                <div className="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm relative space-y-4 hover:border-emerald-500/40 transition">
-                  <div className="w-12 h-12 rounded-2xl bg-emerald-100 text-emerald-700 flex items-center justify-center font-black text-lg border border-emerald-200">
-                    03
-                  </div>
-                  <h3 className="text-lg font-extrabold text-slate-900">Verify PIN at Pickup</h3>
-                  <p className="text-slate-600 text-sm leading-relaxed">
-                    When the buyer arrives, enter their 4-digit PIN on your donor board to mark the order as complete.
-                  </p>
-                </div>
-              </motion.div>
-            ) : (
-              <motion.div
-                key="recipients"
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -20 }}
-                transition={{ duration: 0.4 }}
-                className="grid grid-cols-1 md:grid-cols-3 gap-8"
-              >
-                <div className="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm relative space-y-4 hover:border-teal-500/40 transition">
-                  <div className="w-12 h-12 rounded-2xl bg-teal-100 text-teal-700 flex items-center justify-center font-black text-lg border border-teal-200">
-                    01
-                  </div>
-                  <h3 className="text-lg font-extrabold text-slate-900">Find Food Near You</h3>
-                  <p className="text-slate-600 text-sm leading-relaxed">
-                    Explore active surplus bundles pinned in real time on our interactive neighborhood map.
-                  </p>
-                </div>
-
-                <div className="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm relative space-y-4 hover:border-teal-500/40 transition">
-                  <div className="w-12 h-12 rounded-2xl bg-teal-100 text-teal-700 flex items-center justify-center font-black text-lg border border-teal-200">
-                    02
-                  </div>
-                  <h3 className="text-lg font-extrabold text-slate-900">Claim with 1-Click</h3>
-                  <p className="text-slate-600 text-sm leading-relaxed">
-                    Reserve items instantly before pickup timers expire and get an auto-generated QR code & 4-digit PIN.
-                  </p>
-                </div>
-
-                <div className="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm relative space-y-4 hover:border-teal-500/40 transition">
-                  <div className="w-12 h-12 rounded-2xl bg-teal-100 text-teal-700 flex items-center justify-center font-black text-lg border border-teal-200">
-                    03
-                  </div>
-                  <h3 className="text-lg font-extrabold text-slate-900">Show Code & Pickup</h3>
-                  <p className="text-slate-600 text-sm leading-relaxed">
-                    Visit the store counter, present your PIN or QR code, and collect fresh surplus food!
-                  </p>
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </section>
-
-        {/* 🍱 Bento-Grid Feature Showcase */}
-        <section className="py-20 bg-white border-t border-slate-200">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="text-center max-w-2xl mx-auto mb-16 space-y-3">
-              <h2 className="text-3xl font-black text-slate-900">Engineered for Speed & Impact</h2>
-              <p className="text-slate-600 text-sm">
-                Built with modern full-stack web standards for real-time synchronization.
-              </p>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-              <motion.div
-                whileHover={{ y: -6 }}
-                className="bg-slate-50 p-8 rounded-3xl border border-slate-200 shadow-sm space-y-4"
-              >
-                <div className="w-12 h-12 bg-emerald-100 text-emerald-700 rounded-2xl flex items-center justify-center">
-                  <MapPin className="w-6 h-6" />
-                </div>
-                <h3 className="text-lg font-extrabold text-slate-900">Geospatial Search</h3>
-                <p className="text-slate-600 text-sm leading-relaxed">
-                  PostGIS location radius calculations ensure users discover surplus food nearest to their current location.
-                </p>
-              </motion.div>
-
-              <motion.div
-                whileHover={{ y: -6 }}
-                className="bg-slate-50 p-8 rounded-3xl border border-slate-200 shadow-sm space-y-4"
-              >
-                <div className="w-12 h-12 bg-teal-100 text-teal-700 rounded-2xl flex items-center justify-center">
-                  <QrCode className="w-6 h-6" />
-                </div>
-                <h3 className="text-lg font-extrabold text-slate-900">Two-Way Handshake</h3>
-                <p className="text-slate-600 text-sm leading-relaxed">
-                  Every reservation generates a security PIN to ensure only legitimate claimants collect food at the store counter.
-                </p>
-              </motion.div>
-
-              <motion.div
-                whileHover={{ y: -6 }}
-                className="bg-slate-50 p-8 rounded-3xl border border-slate-200 shadow-sm space-y-4"
-              >
-                <div className="w-12 h-12 bg-amber-100 text-amber-700 rounded-2xl flex items-center justify-center">
-                  <TrendingUp className="w-6 h-6" />
-                </div>
-                <h3 className="text-lg font-extrabold text-slate-900">Carbon Analytics</h3>
-                <p className="text-slate-600 text-sm leading-relaxed">
-                  Businesses track their real-time environmental contribution, meals rescued, and cost recovery metrics.
-                </p>
-              </motion.div>
-            </div>
-          </div>
-        </section>
+        {/* 🍱 BENTO FEATURE SHOWCASE (NOW A SEPARATE COMPONENT) */}
+        <FeaturesSection />
 
         {/* ❓ FREQUENTLY ASKED QUESTIONS (FAQ) SECTION */}
         <FaqSection />
