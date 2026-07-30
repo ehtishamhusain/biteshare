@@ -289,7 +289,9 @@ export default function Home() {
           </div>
         </section>
 
+        {/*
         {/* 📊 Impact Metrics Bar */}
+        {/*
         <section className="border-y border-slate-200 bg-white py-12 shadow-xs">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <motion.div
@@ -329,6 +331,7 @@ export default function Home() {
             </motion.div>
           </div>
         </section>
+        */}
 
         {/* 🌟 OUR MISSION SECTION */}
         <MissionSection />
