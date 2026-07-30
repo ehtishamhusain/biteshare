@@ -41,7 +41,7 @@ export default function FounderNote() {
 
           {/* Deep Quotation Banner */}
           <blockquote className="text-xl sm:text-2xl font-black text-slate-900 leading-snug tracking-tight italic border-l-4 border-emerald-600 pl-4 sm:pl-6 py-1">
-            "Food is a promise of life. Wasting wholesome meals while someone sleeps hungry is a paradox we must end."
+            “Food is not just sustenance—it is a basic human need that should never be wasted. Yet every day, nourishing meals are wasted while people go to bed hungry. This is not merely inefficiency, it is a moral responsibility we can no longer ignore.”
           </blockquote>
 
           {/* Personal Message Body */}

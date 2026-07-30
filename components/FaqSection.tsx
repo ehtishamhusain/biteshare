@@ -35,13 +35,13 @@ const faqs: FaqItem[] = [
   {
     question: 'How do restaurants and bakeries receive their earnings?',
     answer:
-      'For paid surplus listings, BiteShare automatically records 90% of the sale to the restaurant and 10% as a platform fee. Store owners can enter their UPI ID or Bank details in their "Earnings" page to receive direct weekly automated payouts.',
+      'Recipients will pay donors directly at the counter upon surplus food collection. At the end of each week, BiteShare will issue a detailed receipt to partner food stores outlining the total transactions, along with the platform’s 12% service fee. Restaurants/donors can then settle this amount seamlessly using the provided bank details.',
     category: 'DONOR',
   },
   {
     question: 'Who can claim food on BiteShare? Is it open to everyone?',
     answer:
-      'BiteShare is open to all community members—including students, local workers, families, and neighborhood shelters! Rescuing surplus food helps eliminate local hunger while protecting the environment from landfill carbon emissions.',
+      'BiteShare is open to all community members—including students, local workers, families, NGOs and neighborhood shelters! Rescuing surplus food helps eliminate local hunger while protecting the environment from landfill carbon emissions.',
     category: 'RECIPIENT',
   },
   {

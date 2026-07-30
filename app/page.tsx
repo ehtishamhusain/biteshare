@@ -171,7 +171,7 @@ export default function Home() {
                 </div>
                 <div className="flex items-center gap-2">
                   <ShieldCheck className="w-4 h-4 text-emerald-600" />
-                  <span className="font-medium">QR/PIN Verified Handshakes</span>
+                  <span className="font-medium">PIN Verified Handshakes</span>
                 </div>
               </motion.div>
             </motion.div>

@@ -56,7 +56,7 @@ export default function HowItWorksSection() {
       title: 'Quick Store Pickup',
       subtitle: 'Zero Waste Impact',
       description:
-        'Head to the store, show your claim receipt, collect your fresh food, and help save the planet!',
+        'Head to the store, show your 4-digits claim PIN, collect your fresh food, and help save the planet!',
       badge: '100% Fresh Guaranteed',
       color: 'from-teal-500 to-cyan-600',
       lightBg: 'bg-teal-50/80',
@@ -220,7 +220,7 @@ export default function HowItWorksSection() {
               <Heart className="w-5 h-5 text-emerald-400 fill-emerald-400/20" /> Ready to Make a Difference Today?
             </h4>
             <p className="text-slate-400 text-xs sm:text-sm font-medium">
-              Join local businesses and neighbors reducing food waste across your city.
+              Join locals reducing food waste and advancing zero hunger.
             </p>
           </div>
 

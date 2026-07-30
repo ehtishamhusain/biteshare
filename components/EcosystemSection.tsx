@@ -85,7 +85,7 @@ export default function EcosystemSection() {
               </div>
 
               <span className="inline-block text-[11px] font-black uppercase tracking-wider bg-emerald-100 text-emerald-800 px-3 py-1 rounded-full border border-emerald-200">
-                90% Recouped to Stores
+                88% Recouped to Stores
               </span>
 
               <h3 className="text-xl font-extrabold text-slate-900">
@@ -93,7 +93,7 @@ export default function EcosystemSection() {
               </h3>
 
               <p className="text-slate-600 text-xs leading-relaxed">
-                Eateries recoup up to 90% of their raw ingredient costs on food that would otherwise be thrown away, while gaining valuable new neighborhood foot traffic.
+                Food stores can unlock up to 88% returns on surplus inventory, seamlessly converting potential waste into high-value revenue while expanding their reach to a new, engaged local audience.
               </p>
             </div>
 
@@ -123,7 +123,7 @@ export default function EcosystemSection() {
               </div>
 
               <span className="inline-block text-[11px] font-black uppercase tracking-wider bg-emerald-800 text-emerald-200 px-3 py-1 rounded-full border border-emerald-700">
-                10% Fair Service Fee
+                12% Fair Service Fee
               </span>
 
               <h3 className="text-xl font-extrabold text-white">
@@ -131,7 +131,7 @@ export default function EcosystemSection() {
               </h3>
 
               <p className="text-emerald-100 text-xs leading-relaxed">
-                A tiny 10% platform fee on paid items funds our real-time WebSocket servers, map geocoding APIs, counter verification security, and community outreach.
+                We charge a 12% platform fee to ensure our platform runs seamlessly without interruption, delivering a consistent and reliable experience for both donor and recipients.
               </p>
             </div>
 

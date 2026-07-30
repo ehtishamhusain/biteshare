@@ -94,12 +94,12 @@ export default function Footer() {
             </Link>
 
             <p className="text-slate-400 text-sm leading-relaxed max-w-sm">
-              Connecting local bakeries, restaurants, and grocery stores with community members and neighborhood shelters in real time to end food waste.
+              Connecting local bakeries, restaurants, and grocery stores with community members and neighborhood shelters in real time to end food waste and move closer to zero hunger.
             </p>
 
             <div className="flex items-center gap-2 text-xs font-semibold text-emerald-400 bg-emerald-950/60 border border-emerald-800/50 px-3.5 py-2 rounded-xl w-fit">
               <Sparkles className="w-4 h-4 text-emerald-400" />
-              <span>Zero Food Waste • Hyper-Local Direct Impact</span>
+              <span>Zero Food Waste • Zero Hunger • Hyper-Local Direct Impact</span>
             </div>
 
             {/* Social Icons with Inline SVGs */}
@@ -138,6 +138,7 @@ export default function Footer() {
               {[
                 { label: 'Home', href: '/' },
                 { label: 'Explore Feed', href: '/feed' },
+                { label: 'Explore Restaurants', href: '/restaurants' },
                 { label: 'Reviews', href: '/reviews' },
                 { label: 'About Us', href: '/about' },
                 { label: 'Contact Us', href: '/contact' },
@@ -214,7 +215,7 @@ export default function Footer() {
           <div className="flex items-center gap-1.5 font-medium">
             <span>© 2026 BiteShare. Built with</span>
             <Heart className="w-3.5 h-3.5 text-red-500 fill-red-500 animate-pulse" />
-            <span>for community zero waste.</span>
+            <span>for communities</span>
           </div>
 
           {/* Smooth Back-to-Top Button */}
