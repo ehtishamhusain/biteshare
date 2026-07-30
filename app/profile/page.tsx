@@ -15,12 +15,14 @@ import {
   Globe,
   RefreshCw,
   Store,
+  Locate,
 } from 'lucide-react';
 
 export default function ProfilePage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [detectingGps, setDetectingGps] = useState(false);
   const [message, setMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
 
   // Profile Form States
@@ -33,6 +35,8 @@ export default function ProfilePage() {
   const [state, setState] = useState('');
   const [pincode, setPincode] = useState('');
   const [country, setCountry] = useState('India');
+  const [latitude, setLatitude] = useState<number | null>(null);
+  const [longitude, setLongitude] = useState<number | null>(null);
 
   useEffect(() => {
     fetchProfile();
@@ -69,10 +73,41 @@ export default function ProfilePage() {
       setStreetAddress(profile.street_address || '');
       setCity(profile.city || '');
       setState(profile.state || '');
-      setPincode(profile.pincode || '');
+      setPincode(profile.pincode || profile.postal_code || '');
       setCountry(profile.country || 'India');
+      setLatitude(profile.latitude ? Number(profile.latitude) : null);
+      setLongitude(profile.longitude ? Number(profile.longitude) : null);
     }
     setLoading(false);
+  };
+
+  // 🎯 Detect Device GPS Coordinates
+  const handleDetectGPS = () => {
+    setDetectingGps(true);
+    setMessage(null);
+
+    if ('geolocation' in navigator) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          setLatitude(position.coords.latitude);
+          setLongitude(position.coords.longitude);
+          setMessage({ text: '🎯 Exact GPS location captured successfully!', type: 'success' });
+          setDetectingGps(false);
+        },
+        (err) => {
+          console.warn('GPS detection failed:', err.message);
+          setMessage({
+            text: 'Could not detect browser GPS. Please allow location permissions or type your address.',
+            type: 'error',
+          });
+          setDetectingGps(false);
+        },
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+      );
+    } else {
+      setMessage({ text: 'Geolocation is not supported by your browser.', type: 'error' });
+      setDetectingGps(false);
+    }
   };
 
   const handleSaveProfile = async (e: React.FormEvent) => {
@@ -114,6 +149,35 @@ export default function ProfilePage() {
       return;
     }
 
+    let finalLat = latitude;
+    let finalLng = longitude;
+
+    // 🌍 Auto-geocode address if lat/lng are missing
+    if (!finalLat || !finalLng) {
+      const fullQuery = [streetAddress.trim(), city.trim(), state.trim(), pincode.trim(), country.trim()]
+        .filter(Boolean)
+        .join(', ');
+
+      if (fullQuery) {
+        try {
+          const res = await fetch(
+            `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(
+              fullQuery
+            )}&limit=1`
+          );
+          const geocodeData = await res.json();
+          if (geocodeData && geocodeData.length > 0) {
+            finalLat = parseFloat(geocodeData[0].lat);
+            finalLng = parseFloat(geocodeData[0].lon);
+            setLatitude(finalLat);
+            setLongitude(finalLng);
+          }
+        } catch (err) {
+          console.error('Auto-geocoding error:', err);
+        }
+      }
+    }
+
     const upsertPayload: any = {
       id: user.id,
       email: user.email,
@@ -125,7 +189,10 @@ export default function ProfilePage() {
       city: city.trim(),
       state: state.trim(),
       pincode: pincode.trim(),
+      postal_code: pincode.trim(),
       country: country.trim(),
+      latitude: finalLat,
+      longitude: finalLng,
       updated_at: new Date().toISOString(),
     };
 
@@ -276,9 +343,21 @@ export default function ProfilePage() {
 
               {/* Structured Address */}
               <div className="space-y-4 pt-4 border-t border-slate-100">
-                <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-700">
-                  <MapPin className="w-4 h-4 text-emerald-600" />
-                  <span>Structured Address Details</span>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-700">
+                    <MapPin className="w-4 h-4 text-emerald-600" />
+                    <span>Structured Address Details</span>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleDetectGPS}
+                    disabled={detectingGps}
+                    className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 font-extrabold text-[11px] rounded-xl transition flex items-center gap-1.5 disabled:opacity-50"
+                  >
+                    <Locate className={`w-3.5 h-3.5 text-emerald-600 ${detectingGps ? 'animate-spin' : ''}`} />
+                    <span>{detectingGps ? 'Detecting GPS...' : 'Detect GPS Location'}</span>
+                  </button>
                 </div>
 
                 <div>

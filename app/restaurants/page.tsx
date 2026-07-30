@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
+import dynamic from 'next/dynamic';
 import { motion, Variants } from 'framer-motion';
 import { supabase } from '@/lib/supabase';
 import {
@@ -16,7 +17,20 @@ import {
   CheckCircle2,
   Star,
   User,
+  Map,
+  LayoutGrid,
 } from 'lucide-react';
+
+// ⚡ Dynamically import RestaurantMapView with SSR disabled
+const RestaurantMapView = dynamic(() => import('@/components/RestaurantMapView'), {
+  ssr: false,
+  loading: () => (
+    <div className="w-full h-[500px] bg-slate-100 rounded-3xl flex flex-col items-center justify-center space-y-2 border border-slate-200 animate-pulse">
+      <RefreshCw className="w-6 h-6 animate-spin text-emerald-600" />
+      <span className="text-xs font-bold text-slate-500">Loading Google Restaurant Map Engine...</span>
+    </div>
+  ),
+});
 
 const fadeInUp: Variants = {
   hidden: { opacity: 0, y: 20 },
@@ -32,6 +46,7 @@ export default function RestaurantsDirectoryPage() {
   const [restaurants, setRestaurants] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const [viewMode, setViewMode] = useState<'grid' | 'map'>('grid');
 
   useEffect(() => {
     fetchRestaurantsWithMetrics();
@@ -99,7 +114,7 @@ export default function RestaurantsDirectoryPage() {
     setLoading(false);
   };
 
-  // 🔍 Enhanced Search Filter (Owner Name, Store Name, Address, City, State, Pincode)
+  // 🔍 Enhanced Search Filter
   const filteredRestaurants = useMemo(() => {
     return restaurants.filter((r) => {
       const query = searchQuery.toLowerCase().trim();
@@ -126,18 +141,47 @@ export default function RestaurantsDirectoryPage() {
     <div className="min-h-screen bg-slate-50 py-10 px-4 sm:px-6 lg:px-8 font-sans">
       <div className="max-w-6xl mx-auto space-y-8">
         
-        {/* Header Banner */}
-        <div className="text-center sm:text-left space-y-2">
-          <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-emerald-100 text-emerald-800 text-xs font-black uppercase tracking-wider border border-emerald-200">
-            <Store className="w-3.5 h-3.5 text-emerald-600" />
-            <span>Zero-Waste Food Partners</span>
+        {/* Header Banner & View Switcher */}
+        <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+          <div className="text-center sm:text-left space-y-2">
+            <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-emerald-100 text-emerald-800 text-xs font-black uppercase tracking-wider border border-emerald-200">
+              <Store className="w-3.5 h-3.5 text-emerald-600" />
+              <span>Zero-Waste Food Partners</span>
+            </div>
+            <h1 className="text-3xl sm:text-4xl font-black text-slate-900 tracking-tight">
+              Explore Partner Restaurants & Bakeries
+            </h1>
+            <p className="text-slate-600 text-sm max-w-xl leading-relaxed">
+              Discover local businesses sharing surplus food in your community. Check store owner details, complete address, ratings, and active food.
+            </p>
           </div>
-          <h1 className="text-3xl sm:text-4xl font-black text-slate-900 tracking-tight">
-            Explore Partner Restaurants & Bakeries
-          </h1>
-          <p className="text-slate-600 text-sm max-w-xl leading-relaxed">
-            Discover local businesses sharing surplus food in your community. Check store owner details, complete address, ratings, and active food.
-          </p>
+
+          {/* View Toggle Buttons */}
+          <div className="flex items-center justify-center gap-1 bg-white p-1 rounded-2xl border border-slate-200 shadow-xs self-center sm:self-auto">
+            <button
+              onClick={() => setViewMode('grid')}
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
+                viewMode === 'grid'
+                  ? 'bg-emerald-600 text-white shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <LayoutGrid className="w-4 h-4" />
+              <span>Grid View</span>
+            </button>
+
+            <button
+              onClick={() => setViewMode('map')}
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
+                viewMode === 'map'
+                  ? 'bg-emerald-600 text-white shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <Map className="w-4 h-4" />
+              <span>Interactive Map</span>
+            </button>
+          </div>
         </div>
 
         {/* 🔍 Search Input Bar */}
@@ -162,7 +206,7 @@ export default function RestaurantsDirectoryPage() {
           </div>
         </div>
 
-        {/* Directory Grid */}
+        {/* Directory Content */}
         {loading ? (
           <div className="bg-white rounded-3xl p-12 text-center border border-slate-200 shadow-xs flex flex-col items-center justify-center">
             <RefreshCw className="w-8 h-8 animate-spin text-emerald-600 mb-3" />
@@ -174,7 +218,13 @@ export default function RestaurantsDirectoryPage() {
             <h3 className="text-lg font-bold text-slate-800">No restaurants match your search</h3>
             <p className="text-slate-500 text-xs">Try searching for a different owner name, business, or location.</p>
           </div>
+        ) : viewMode === 'map' ? (
+          /* 🗺️ INTERACTIVE GOOGLE MAP VIEW */
+          <div className="space-y-4">
+            <RestaurantMapView restaurants={filteredRestaurants} />
+          </div>
         ) : (
+          /* 🍱 GRID VIEW CARDS */
           <motion.div
             className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
             initial="hidden"
@@ -254,7 +304,7 @@ export default function RestaurantsDirectoryPage() {
                           <MapPin className="w-3.5 h-3.5" />
                         </div>
                         <div>
-                          <span className="text-[10px] text-slate-400 font-bold uppercase block leading-none">Address</span>
+                          <span className="text-[10px] text-slate-400 font-bold uppercase block leading-none">Complete Address</span>
                           <span className="line-clamp-2 text-slate-800 font-semibold leading-relaxed mt-0.5">
                             {fullAddress || 'Address details available on profile'}
                           </span>

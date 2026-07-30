@@ -169,7 +169,7 @@ export default function SignupPage() {
                   }`}
                 >
                   <Heart className="w-5 h-5 text-emerald-600" />
-                  <span>Recipient / Shelter</span>
+                  <span>Recipient / NGO</span>
                 </button>
 
                 <button
@@ -182,7 +182,7 @@ export default function SignupPage() {
                   }`}
                 >
                   <Utensils className="w-5 h-5 text-emerald-600" />
-                  <span>Food Donor / Business</span>
+                  <span>Food Donor / Restaurant</span>
                 </button>
               </div>
             </div>
@@ -190,7 +190,7 @@ export default function SignupPage() {
             {/* Email Input */}
             <div>
               <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">
-                Authentic Email Address
+                Email Address
               </label>
               <input
                 type="email"

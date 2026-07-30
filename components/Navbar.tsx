@@ -319,7 +319,7 @@ export default function Navbar() {
                     <span>Explore Restaurants</span>
                   </Link>
 
-                  <Link
+                  {/* <Link
                     href="/sponsor"
                     className={`px-3 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
                       pathname === '/sponsor'
@@ -329,7 +329,7 @@ export default function Navbar() {
                   >
                     <Heart className="w-4 h-4 text-emerald-600 fill-emerald-100" />
                     <span>Sponsor a Meal</span>
-                  </Link>
+                  </Link> */}
 
                   {user && role === 'RECIPIENT' && (
                     <Link
@@ -542,13 +542,13 @@ export default function Navbar() {
                   🏬 Explore Restaurants
                 </Link>
 
-                <Link
+                {/* <Link
                   href="/sponsor"
                   onClick={() => setMobileMenuOpen(false)}
                   className="block px-4 py-2.5 rounded-xl text-xs font-bold text-slate-700 hover:bg-slate-50"
                 >
                   ❤️ Sponsor a Meal
-                </Link>
+                </Link> */}
               </>
             )}
 

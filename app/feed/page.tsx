@@ -3,7 +3,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import dynamic from 'next/dynamic';
 import { motion, AnimatePresence, Variants } from 'framer-motion';
 import { supabase } from '@/lib/supabase';
 import {
@@ -12,8 +11,6 @@ import {
   Clock,
   Tag,
   RefreshCw,
-  List,
-  Map as MapIcon,
   Sparkles,
   Building,
   UserPlus,
@@ -24,16 +21,6 @@ import {
   Search,
   Filter,
 } from 'lucide-react';
-
-const MapView = dynamic(() => import('@/components/MapView'), {
-  ssr: false,
-  loading: () => (
-    <div className="h-[500px] w-full bg-slate-100 rounded-3xl animate-pulse flex flex-col items-center justify-center text-slate-400 text-sm gap-2">
-      <RefreshCw className="w-6 h-6 animate-spin text-emerald-600" />
-      <span>Loading Interactive Map...</span>
-    </div>
-  ),
-});
 
 const fadeInUp: Variants = {
   hidden: { opacity: 0, y: 25 },
@@ -56,7 +43,6 @@ export default function FeedPage() {
   const router = useRouter();
   const [bundles, setBundles] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [viewMode, setViewMode] = useState<'list' | 'map'>('list');
   const [claimingId, setClaimingId] = useState<string | null>(null);
   const [message, setMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
 
@@ -96,7 +82,7 @@ export default function FeedPage() {
 
     const { data, error } = await supabase
       .from('food_bundles')
-      .select('*, donor:profiles(organization_name, full_name)')
+      .select('*, donor:profiles(id, organization_name, full_name)')
       .eq('status', 'AVAILABLE')
       .order('created_at', { ascending: false });
 
@@ -289,39 +275,14 @@ export default function FeedPage() {
           transition={{ duration: 0.6 }}
           className="bg-gradient-to-r from-emerald-600 to-teal-700 rounded-3xl p-6 sm:p-8 text-white shadow-xl relative overflow-hidden"
         >
-          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 relative z-10">
-            <div>
-              <div className="inline-flex items-center gap-2 bg-emerald-500/30 backdrop-blur-md border border-emerald-400/30 px-3.5 py-1 rounded-full text-xs font-bold uppercase tracking-wider mb-2">
-                <Sparkles className="w-3.5 h-3.5 text-emerald-200" /> Realtime Live Feed
-              </div>
-              <h1 className="text-2xl sm:text-3xl font-extrabold">Active Surplus Food Near You</h1>
-              <p className="text-emerald-100 text-sm sm:text-base mt-1">
-                Enter your required quantity or claim all available items at once.
-              </p>
+          <div className="relative z-10 space-y-2">
+            <div className="inline-flex items-center gap-2 bg-emerald-500/30 backdrop-blur-md border border-emerald-400/30 px-3.5 py-1 rounded-full text-xs font-bold uppercase tracking-wider">
+              <Sparkles className="w-3.5 h-3.5 text-emerald-200" /> Realtime Live Feed
             </div>
-
-            <div className="flex bg-emerald-800/50 backdrop-blur-md p-1.5 rounded-2xl border border-emerald-500/30">
-              <button
-                onClick={() => setViewMode('list')}
-                className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition ${
-                  viewMode === 'list'
-                    ? 'bg-white text-emerald-800 shadow-md'
-                    : 'text-emerald-100 hover:text-white'
-                }`}
-              >
-                <List className="w-4 h-4" /> List View
-              </button>
-              <button
-                onClick={() => setViewMode('map')}
-                className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition ${
-                  viewMode === 'map'
-                    ? 'bg-white text-emerald-800 shadow-md'
-                    : 'text-emerald-100 hover:text-white'
-                }`}
-              >
-                <MapIcon className="w-4 h-4" /> Map View
-              </button>
-            </div>
+            <h1 className="text-2xl sm:text-3xl font-extrabold">Active Surplus Food Near You</h1>
+            <p className="text-emerald-100 text-sm sm:text-base">
+              Enter your required quantity or claim all available items at once.
+            </p>
           </div>
         </motion.div>
 
@@ -406,12 +367,8 @@ export default function FeedPage() {
           </motion.div>
         )}
 
-        {/* View Selection */}
-        {viewMode === 'map' ? (
-          <div className="bg-white p-4 rounded-3xl shadow-sm border border-slate-200">
-            <MapView bundles={filteredBundles} onClaim={(id) => handleClaim(bundles.find((b) => b.id === id))} />
-          </div>
-        ) : loading ? (
+        {/* Food Listings Grid */}
+        {loading ? (
           <div className="flex flex-col items-center justify-center py-16 text-slate-500">
             <RefreshCw className="w-8 h-8 animate-spin text-emerald-600 mb-3" />
             <p className="text-sm font-medium">Loading live surplus food listings...</p>
@@ -451,6 +408,8 @@ export default function FeedPage() {
                 bundle.donor?.organization_name ||
                 bundle.donor?.full_name ||
                 'Local Food Business';
+
+              const donorId = bundle.donor_id || bundle.donor?.id;
 
               const remainingQty = bundle.quantity_remaining;
               const selectedQty = Math.max(1, Math.min(selectedQuantities[bundle.id] ?? 1, remainingQty));
@@ -495,10 +454,21 @@ export default function FeedPage() {
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-700">
-                      <Building className="w-3.5 h-3.5" />
-                      <span>{businessName}</span>
-                    </div>
+                    {/* 🏬 Clickable Restaurant / Business Name Header */}
+                    {donorId ? (
+                      <Link
+                        href={`/restaurants/${donorId}`}
+                        className="inline-flex items-center gap-1.5 text-xs font-extrabold text-emerald-700 hover:text-emerald-800 hover:underline transition cursor-pointer group"
+                      >
+                        <Building className="w-3.5 h-3.5 text-emerald-600 group-hover:scale-110 transition-transform" />
+                        <span>{businessName}</span>
+                      </Link>
+                    ) : (
+                      <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-700">
+                        <Building className="w-3.5 h-3.5" />
+                        <span>{businessName}</span>
+                      </div>
+                    )}
 
                     <h3 className="text-lg font-bold text-slate-900">{bundle.title}</h3>
                     <p className="text-slate-600 text-sm line-clamp-2">
