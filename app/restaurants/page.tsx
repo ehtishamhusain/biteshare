@@ -10,12 +10,12 @@ import {
   Search,
   Utensils,
   ChevronRight,
-  Phone,
   RefreshCw,
   X,
   Store,
   CheckCircle2,
   Star,
+  User,
 } from 'lucide-react';
 
 const fadeInUp: Variants = {
@@ -99,19 +99,31 @@ export default function RestaurantsDirectoryPage() {
     setLoading(false);
   };
 
+  // 🔍 Enhanced Search Filter (Owner Name, Store Name, Address, City, State, Pincode)
   const filteredRestaurants = useMemo(() => {
     return restaurants.filter((r) => {
       const query = searchQuery.toLowerCase().trim();
-      const name = (r.organization_name || r.full_name || '').toLowerCase();
+      const orgName = (r.organization_name || '').toLowerCase();
+      const ownerName = (r.full_name || '').toLowerCase();
       const city = (r.city || '').toLowerCase();
       const street = (r.street_address || '').toLowerCase();
+      const state = (r.state || '').toLowerCase();
+      const pincode = (r.pincode || r.postal_code || '').toString().toLowerCase();
 
-      return query === '' || name.includes(query) || city.includes(query) || street.includes(query);
+      return (
+        query === '' ||
+        orgName.includes(query) ||
+        ownerName.includes(query) ||
+        city.includes(query) ||
+        street.includes(query) ||
+        state.includes(query) ||
+        pincode.includes(query)
+      );
     });
   }, [restaurants, searchQuery]);
 
   return (
-    <div className="min-h-screen bg-slate-50 py-10 px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen bg-slate-50 py-10 px-4 sm:px-6 lg:px-8 font-sans">
       <div className="max-w-6xl mx-auto space-y-8">
         
         {/* Header Banner */}
@@ -124,7 +136,7 @@ export default function RestaurantsDirectoryPage() {
             Explore Partner Restaurants & Bakeries
           </h1>
           <p className="text-slate-600 text-sm max-w-xl leading-relaxed">
-            Discover local businesses sharing surplus food in your community. Check ratings and view available food.
+            Discover local businesses sharing surplus food in your community. Check store owner details, complete address, ratings, and active food.
           </p>
         </div>
 
@@ -136,7 +148,7 @@ export default function RestaurantsDirectoryPage() {
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search restaurant by name, bakery, or city (e.g., Royal Spice, Bareilly)..."
+              placeholder="Search by restaurant name, owner name, city, address, or pincode..."
               className="w-full pl-12 pr-10 py-3.5 rounded-2xl border border-slate-200 focus:ring-2 focus:ring-emerald-500 outline-none text-sm text-slate-800 bg-slate-50/50"
             />
             {searchQuery && (
@@ -160,7 +172,7 @@ export default function RestaurantsDirectoryPage() {
           <div className="bg-white rounded-3xl p-12 text-center border border-slate-200 shadow-xs space-y-3">
             <Building className="w-12 h-12 text-slate-300 mx-auto" />
             <h3 className="text-lg font-bold text-slate-800">No restaurants match your search</h3>
-            <p className="text-slate-500 text-xs">Try searching for a different business name or location.</p>
+            <p className="text-slate-500 text-xs">Try searching for a different owner name, business, or location.</p>
           </div>
         ) : (
           <motion.div
@@ -170,8 +182,19 @@ export default function RestaurantsDirectoryPage() {
             variants={staggerContainer}
           >
             {filteredRestaurants.map((restaurant) => {
-              const displayName = restaurant.organization_name || restaurant.full_name || 'Partner Store';
+              const storeName = restaurant.organization_name || restaurant.full_name || 'Partner Store';
+              const ownerName = restaurant.full_name || 'Verified Owner';
               const hasActiveFood = restaurant.active_bundles_count > 0;
+
+              // Format Complete Address
+              const fullAddress = [
+                restaurant.street_address,
+                restaurant.city,
+                restaurant.state,
+                restaurant.pincode || restaurant.postal_code,
+              ]
+                .filter(Boolean)
+                .join(', ');
 
               return (
                 <motion.div
@@ -181,6 +204,7 @@ export default function RestaurantsDirectoryPage() {
                   className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-xs hover:shadow-md transition flex flex-col justify-between"
                 >
                   <div className="p-6 space-y-4">
+                    
                     {/* Live Availability & Star Rating */}
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-1 bg-amber-50 text-amber-900 border border-amber-200 px-2.5 py-1 rounded-full text-xs font-black">
@@ -201,23 +225,44 @@ export default function RestaurantsDirectoryPage() {
                       </span>
                     </div>
 
-                    {/* Restaurant Info */}
-                    <div>
-                      <h3 className="text-xl font-black text-slate-900 line-clamp-1">{displayName}</h3>
-                      <p className="text-xs text-slate-500 mt-1 flex items-center gap-1">
-                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /> Verified Food Partner
-                      </p>
-                    </div>
-
-                    {/* Address */}
-                    <div className="space-y-2 pt-3 border-t border-slate-100 text-xs text-slate-600 font-medium">
-                      <div className="flex items-start gap-2">
-                        <MapPin className="w-4 h-4 text-emerald-600 flex-shrink-0 mt-0.5" />
-                        <span className="line-clamp-2">
-                          {restaurant.street_address ? `${restaurant.street_address}, ${restaurant.city}` : restaurant.city || 'Address on profile'}
-                        </span>
+                    {/* Restaurant Business Name */}
+                    <div className="space-y-1">
+                      <h3 className="text-xl font-black text-slate-900 line-clamp-1">{storeName}</h3>
+                      <div className="flex items-center gap-1.5 text-xs text-emerald-700 font-bold">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" />
+                        <span>Verified Food Partner</span>
                       </div>
                     </div>
+
+                    {/* Owner Name & Complete Address Details */}
+                    <div className="pt-3 border-t border-slate-100 space-y-2.5 text-xs text-slate-600 font-medium">
+                      
+                      {/* Owner Name */}
+                      <div className="flex items-center gap-2 text-slate-700">
+                        <div className="p-1.5 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-100">
+                          <User className="w-3.5 h-3.5" />
+                        </div>
+                        <div>
+                          <span className="text-[10px] text-slate-400 font-bold uppercase block leading-none">Owner</span>
+                          <span className="font-extrabold text-slate-900">{ownerName}</span>
+                        </div>
+                      </div>
+
+                      {/* Complete Address */}
+                      <div className="flex items-start gap-2 text-slate-600">
+                        <div className="p-1.5 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-100 flex-shrink-0 mt-0.5">
+                          <MapPin className="w-3.5 h-3.5" />
+                        </div>
+                        <div>
+                          <span className="text-[10px] text-slate-400 font-bold uppercase block leading-none">Address</span>
+                          <span className="line-clamp-2 text-slate-800 font-semibold leading-relaxed mt-0.5">
+                            {fullAddress || 'Address details available on profile'}
+                          </span>
+                        </div>
+                      </div>
+
+                    </div>
+
                   </div>
 
                   {/* View Live Storefront Link */}

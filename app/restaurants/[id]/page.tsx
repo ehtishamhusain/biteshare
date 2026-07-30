@@ -306,7 +306,7 @@ export default function SingleRestaurantPage() {
               <MapPin className="w-4 h-4 text-emerald-600 flex-shrink-0 mt-0.5" />
               <span>
                 {donorProfile?.street_address
-                  ? `${donorProfile.street_address}, ${donorProfile.city}`
+                  ? `${donorProfile.street_address}, ${donorProfile.city}, ${donorProfile.state}, ${donorProfile.pincode}`
                   : donorProfile?.city || 'Bareilly'}
               </span>
             </div>
