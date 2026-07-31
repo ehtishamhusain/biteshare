@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
 import './globals.css';
-import Navbar from '@/components/Navbar';
+import NavbarWrapper from '@/components/NavbarWrapper';
 import Footer from '@/components/Footer';
 import ProfileGuard from '@/components/ProfileGuard';
 
@@ -23,8 +23,8 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={`${inter.className} min-h-screen flex flex-col bg-slate-50 antialiased`}>
-        {/* Global Sticky Header */}
-        <Navbar />
+        {/* Conditional Header Wrapper */}
+        <NavbarWrapper />
 
         {/* Dynamic Page Content Protected by ProfileGuard */}
         <main className="flex-grow">
