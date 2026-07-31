@@ -1,14 +1,13 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, FormEvent } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { supabase } from '@/lib/supabase';
 import {
   Mail,
   CheckCircle2,
   Sparkles,
   ShieldCheck,
-  Zap,
+  Globe,
   ArrowRight,
   Users,
   RefreshCw,
@@ -20,7 +19,7 @@ export default function NewsletterSection() {
   const [isSubscribed, setIsSubscribed] = useState(false);
   const [error, setError] = useState('');
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setError('');
 
@@ -34,20 +33,18 @@ export default function NewsletterSection() {
     setIsSubmitting(true);
 
     try {
-      // 💾 Save directly to Supabase subscribers table
-      const { error: dbError } = await supabase
-        .from('subscribers')
-        .insert([{ email: cleanEmail }]);
+      const response = await fetch('/api/subscribe', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email: cleanEmail }),
+      });
 
-      if (dbError) {
-        // Postgres unique constraint violation code for already subscribed emails
-        if (dbError.code === '23505') {
-          setIsSubscribed(true);
-          setEmail('');
-          setIsSubmitting(false);
-          return;
-        }
-        setError(dbError.message || 'Failed to subscribe. Please try again.');
+      const data = await response.json();
+
+      if (!response.ok) {
+        setError(data.error || 'Failed to subscribe. Please try again.');
         setIsSubmitting(false);
         return;
       }
@@ -56,9 +53,9 @@ export default function NewsletterSection() {
       setEmail('');
     } catch (err: any) {
       setError('An unexpected error occurred. Please try again.');
+    } finally {
+      setIsSubmitting(false);
     }
-
-    setIsSubmitting(false);
   };
 
   return (
@@ -85,7 +82,7 @@ export default function NewsletterSection() {
                 className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-emerald-50 border border-emerald-200/80 text-emerald-800 text-xs font-black uppercase tracking-wider"
               >
                 <Sparkles className="w-3.5 h-3.5 text-emerald-600 animate-pulse" />
-                <span>Hyper-Local Instant Drop Alerts</span>
+                <span>Community Updates & Milestones</span>
               </motion.div>
 
               <motion.h2
@@ -95,7 +92,7 @@ export default function NewsletterSection() {
                 transition={{ delay: 0.1 }}
                 className="text-3xl sm:text-4xl lg:text-5xl font-black text-slate-900 tracking-tight leading-[1.15]"
               >
-                Never Miss Surplus Food Drops Nearby.{' '}
+                Stay Connected with BiteShare.{' '}
                 <span className="bg-gradient-to-r from-emerald-600 to-teal-600 bg-clip-text text-transparent">
                   Stay Informed.
                 </span>
@@ -108,7 +105,7 @@ export default function NewsletterSection() {
                 transition={{ delay: 0.2 }}
                 className="text-slate-600 text-sm sm:text-base leading-relaxed font-medium max-w-xl mx-auto lg:mx-0"
               >
-                Get real-time drop notifications whenever neighborhood bakeries, cafes, and stores release fresh surplus items at deep discounts.
+                Subscribe to receive key updates on platform growth, new community partners, and how we are working together to eliminate local food waste.
               </motion.p>
 
               <motion.div
@@ -119,8 +116,8 @@ export default function NewsletterSection() {
                 className="pt-2 flex flex-wrap items-center justify-center lg:justify-start gap-4 text-xs font-bold text-slate-600"
               >
                 <div className="flex items-center gap-1.5">
-                  <Zap className="w-4 h-4 text-emerald-600" />
-                  <span>Instant Notifications</span>
+                  <Globe className="w-4 h-4 text-emerald-600" />
+                  <span>Product Updates</span>
                 </div>
                 <div className="flex items-center gap-1.5">
                   <ShieldCheck className="w-4 h-4 text-emerald-600" />
@@ -128,7 +125,7 @@ export default function NewsletterSection() {
                 </div>
                 <div className="flex items-center gap-1.5">
                   <Users className="w-4 h-4 text-emerald-600" />
-                  <span>Join 2,400+ Local Food Savers</span>
+                  <span>Join 2,400+ Community Supporters</span>
                 </div>
               </motion.div>
             </div>
@@ -158,7 +155,7 @@ export default function NewsletterSection() {
                       <div className="space-y-1">
                         <h3 className="text-lg font-black text-slate-900">You're On The List! 🎉</h3>
                         <p className="text-xs text-slate-600 font-medium leading-relaxed">
-                          We've recorded your email. You'll receive drop alerts as soon as new stores join nearby!
+                          We've saved your email and sent a welcome confirmation to your inbox.
                         </p>
                       </div>
                       <button
@@ -208,7 +205,7 @@ export default function NewsletterSection() {
                           <RefreshCw className="w-4 h-4 animate-spin text-white" />
                         ) : (
                           <>
-                            <span>Subscribe For Drop Alerts</span>
+                            <span>Subscribe For Updates</span>
                             <ArrowRight className="w-4 h-4 stroke-[3]" />
                           </>
                         )}

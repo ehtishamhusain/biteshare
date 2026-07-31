@@ -26,6 +26,8 @@ import {
   Store,
   Heart,
   Award,
+  ShieldAlert,
+  ArrowRight,
 } from 'lucide-react';
 
 export default function Navbar() {
@@ -35,6 +37,10 @@ export default function Navbar() {
   const [role, setRole] = useState<'DONOR' | 'RECIPIENT' | null>(null);
   const [loading, setLoading] = useState(true);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  // 🔒 Profile Completion State
+  const [isProfileIncomplete, setIsProfileIncomplete] = useState(false);
+  const [showIncompleteModal, setShowIncompleteModal] = useState(false);
 
   // 🔽 "More" Dropdown State & Ref
   const [moreDropdownOpen, setMoreDropdownOpen] = useState(false);
@@ -47,6 +53,12 @@ export default function Navbar() {
   useEffect(() => {
     checkUser();
 
+    // 💡 Listen for instant Profile Update signal across the app
+    const handleProfileUpdate = () => {
+      checkUser();
+    };
+    window.addEventListener('profileUpdated', handleProfileUpdate);
+
     // ⚡ Listen for Auth changes in real time
     const { data: authListener } = supabase.auth.onAuthStateChange(
       async (_event, session) => {
@@ -56,12 +68,14 @@ export default function Navbar() {
         } else {
           setUser(null);
           setRole(null);
+          setIsProfileIncomplete(false);
           setLoading(false);
         }
       }
     );
 
     return () => {
+      window.removeEventListener('profileUpdated', handleProfileUpdate);
       authListener.subscription.unsubscribe();
     };
   }, []);
@@ -95,14 +109,28 @@ export default function Navbar() {
   const fetchProfile = async (userId: string) => {
     const { data: profile } = await supabase
       .from('profiles')
-      .select('role')
+      .select('role, full_name, phone')
       .eq('id', userId)
       .maybeSingle();
 
     if (profile) {
       setRole(profile.role);
+      // Profile is incomplete if full_name or phone is missing
+      const incomplete = !profile.full_name || !profile.phone;
+      setIsProfileIncomplete(incomplete);
+    } else {
+      setIsProfileIncomplete(true);
     }
     setLoading(false);
+  };
+
+  // 🔒 Intercept clicks on links when profile is incomplete
+  const handleNavClick = (e: React.MouseEvent, href: string) => {
+    if (user && isProfileIncomplete && href !== '/profile') {
+      e.preventDefault();
+      setShowIncompleteModal(true);
+      if (mobileMenuOpen) setMobileMenuOpen(false);
+    }
   };
 
   const handleConfirmLogout = async () => {
@@ -110,6 +138,7 @@ export default function Navbar() {
     await supabase.auth.signOut();
     setUser(null);
     setRole(null);
+    setIsProfileIncomplete(false);
     setMobileMenuOpen(false);
     setShowLogoutModal(false);
     setLoggingOut(false);
@@ -133,7 +162,11 @@ export default function Navbar() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             {/* Brand Logo */}
-            <Link href="/" className="flex items-center gap-2.5 font-black text-xl text-slate-900 group">
+            <Link
+              href="/"
+              onClick={(e) => handleNavClick(e, '/')}
+              className="flex items-center gap-2.5 font-black text-xl text-slate-900 group"
+            >
               <div className="bg-emerald-600 text-white p-2 rounded-xl group-hover:scale-105 transition shadow-md shadow-emerald-600/20">
                 <Utensils className="w-5 h-5" />
               </div>
@@ -147,6 +180,7 @@ export default function Navbar() {
               {/* 🏠 Home Link */}
               <Link
                 href="/"
+                onClick={(e) => handleNavClick(e, '/')}
                 className={`px-3 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
                   pathname === '/'
                     ? 'bg-emerald-50 text-emerald-800 font-extrabold'
@@ -162,6 +196,7 @@ export default function Navbar() {
                 <>
                   <Link
                     href="/donor/dashboard"
+                    onClick={(e) => handleNavClick(e, '/donor/dashboard')}
                     className={`px-3 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
                       pathname === '/donor/dashboard'
                         ? 'bg-emerald-50 text-emerald-800 font-extrabold'
@@ -174,6 +209,7 @@ export default function Navbar() {
 
                   <Link
                     href="/donor/manage"
+                    onClick={(e) => handleNavClick(e, '/donor/manage')}
                     className={`px-3 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
                       pathname === '/donor/manage'
                         ? 'bg-emerald-50 text-emerald-800 font-extrabold'
@@ -186,6 +222,7 @@ export default function Navbar() {
 
                   <Link
                     href="/donor/earnings"
+                    onClick={(e) => handleNavClick(e, '/donor/earnings')}
                     className={`px-3 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
                       pathname === '/donor/earnings'
                         ? 'bg-amber-500 text-white font-extrabold shadow-xs'
@@ -198,6 +235,7 @@ export default function Navbar() {
 
                   <Link
                     href="/donor/analytics"
+                    onClick={(e) => handleNavClick(e, '/donor/analytics')}
                     className={`px-3 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
                       pathname === '/donor/analytics'
                         ? 'bg-emerald-50 text-emerald-800 font-extrabold'
@@ -238,7 +276,10 @@ export default function Navbar() {
                         >
                           <Link
                             href="/donor/certificate"
-                            onClick={() => setMoreDropdownOpen(false)}
+                            onClick={(e) => {
+                              setMoreDropdownOpen(false);
+                              handleNavClick(e, '/donor/certificate');
+                            }}
                             className={`flex items-center gap-2.5 px-4 py-2.5 text-xs font-bold transition ${
                               pathname === '/donor/certificate'
                                 ? 'bg-emerald-50 text-emerald-800'
@@ -251,7 +292,10 @@ export default function Navbar() {
 
                           <Link
                             href="/reviews"
-                            onClick={() => setMoreDropdownOpen(false)}
+                            onClick={(e) => {
+                              setMoreDropdownOpen(false);
+                              handleNavClick(e, '/reviews');
+                            }}
                             className={`flex items-center gap-2.5 px-4 py-2.5 text-xs font-bold transition ${
                               pathname === '/reviews'
                                 ? 'bg-emerald-50 text-emerald-800'
@@ -264,7 +308,10 @@ export default function Navbar() {
 
                           <Link
                             href="/about"
-                            onClick={() => setMoreDropdownOpen(false)}
+                            onClick={(e) => {
+                              setMoreDropdownOpen(false);
+                              handleNavClick(e, '/about');
+                            }}
                             className={`flex items-center gap-2.5 px-4 py-2.5 text-xs font-bold transition ${
                               pathname === '/about'
                                 ? 'bg-emerald-50 text-emerald-800'
@@ -277,7 +324,10 @@ export default function Navbar() {
 
                           <Link
                             href="/contact"
-                            onClick={() => setMoreDropdownOpen(false)}
+                            onClick={(e) => {
+                              setMoreDropdownOpen(false);
+                              handleNavClick(e, '/contact');
+                            }}
                             className={`flex items-center gap-2.5 px-4 py-2.5 text-xs font-bold transition ${
                               pathname === '/contact'
                                 ? 'bg-emerald-50 text-emerald-800'
@@ -297,6 +347,7 @@ export default function Navbar() {
                 <>
                   <Link
                     href="/feed"
+                    onClick={(e) => handleNavClick(e, '/feed')}
                     className={`px-3 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
                       pathname === '/feed'
                         ? 'bg-emerald-50 text-emerald-800 font-extrabold'
@@ -309,6 +360,7 @@ export default function Navbar() {
 
                   <Link
                     href="/restaurants"
+                    onClick={(e) => handleNavClick(e, '/restaurants')}
                     className={`px-3 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
                       pathname === '/restaurants' || pathname.startsWith('/restaurants/')
                         ? 'bg-emerald-50 text-emerald-800 font-extrabold'
@@ -319,21 +371,10 @@ export default function Navbar() {
                     <span>Explore Restaurants</span>
                   </Link>
 
-                  {/* <Link
-                    href="/sponsor"
-                    className={`px-3 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
-                      pathname === '/sponsor'
-                        ? 'bg-emerald-50 text-emerald-800 font-extrabold'
-                        : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-                    }`}
-                  >
-                    <Heart className="w-4 h-4 text-emerald-600 fill-emerald-100" />
-                    <span>Sponsor a Meal</span>
-                  </Link> */}
-
                   {user && role === 'RECIPIENT' && (
                     <Link
                       href="/my-claims"
+                      onClick={(e) => handleNavClick(e, '/my-claims')}
                       className={`px-3 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
                         pathname === '/my-claims'
                           ? 'bg-emerald-50 text-emerald-800 font-extrabold'
@@ -375,7 +416,10 @@ export default function Navbar() {
                         >
                           <Link
                             href="/reviews"
-                            onClick={() => setMoreDropdownOpen(false)}
+                            onClick={(e) => {
+                              setMoreDropdownOpen(false);
+                              handleNavClick(e, '/reviews');
+                            }}
                             className={`flex items-center gap-2.5 px-4 py-2.5 text-xs font-bold transition ${
                               pathname === '/reviews'
                                 ? 'bg-emerald-50 text-emerald-800'
@@ -388,7 +432,10 @@ export default function Navbar() {
 
                           <Link
                             href="/about"
-                            onClick={() => setMoreDropdownOpen(false)}
+                            onClick={(e) => {
+                              setMoreDropdownOpen(false);
+                              handleNavClick(e, '/about');
+                            }}
                             className={`flex items-center gap-2.5 px-4 py-2.5 text-xs font-bold transition ${
                               pathname === '/about'
                                 ? 'bg-emerald-50 text-emerald-800'
@@ -401,7 +448,10 @@ export default function Navbar() {
 
                           <Link
                             href="/contact"
-                            onClick={() => setMoreDropdownOpen(false)}
+                            onClick={(e) => {
+                              setMoreDropdownOpen(false);
+                              handleNavClick(e, '/contact');
+                            }}
                             className={`flex items-center gap-2.5 px-4 py-2.5 text-xs font-bold transition ${
                               pathname === '/contact'
                                 ? 'bg-emerald-50 text-emerald-800'
@@ -478,7 +528,10 @@ export default function Navbar() {
           <div className="md:hidden bg-white border-b border-slate-200 px-4 pt-2 pb-6 space-y-2">
             <Link
               href="/"
-              onClick={() => setMobileMenuOpen(false)}
+              onClick={(e) => {
+                setMobileMenuOpen(false);
+                handleNavClick(e, '/');
+              }}
               className="block px-4 py-2.5 rounded-xl text-xs font-bold text-slate-700 hover:bg-slate-50"
             >
               🏠 Home
@@ -488,35 +541,50 @@ export default function Navbar() {
               <>
                 <Link
                   href="/donor/dashboard"
-                  onClick={() => setMobileMenuOpen(false)}
+                  onClick={(e) => {
+                    setMobileMenuOpen(false);
+                    handleNavClick(e, '/donor/dashboard');
+                  }}
                   className="block px-4 py-2.5 rounded-xl text-xs font-bold text-slate-700 hover:bg-slate-50"
                 >
                   📤 Publish Bundle
                 </Link>
                 <Link
                   href="/donor/manage"
-                  onClick={() => setMobileMenuOpen(false)}
+                  onClick={(e) => {
+                    setMobileMenuOpen(false);
+                    handleNavClick(e, '/donor/manage');
+                  }}
                   className="block px-4 py-2.5 rounded-xl text-xs font-bold text-slate-700 hover:bg-slate-50"
                 >
                   🛍️ Manage Pickups
                 </Link>
                 <Link
                   href="/donor/earnings"
-                  onClick={() => setMobileMenuOpen(false)}
+                  onClick={(e) => {
+                    setMobileMenuOpen(false);
+                    handleNavClick(e, '/donor/earnings');
+                  }}
                   className="block px-4 py-2.5 rounded-xl text-xs font-extrabold text-amber-800 bg-amber-50 hover:bg-amber-100 border border-amber-200"
                 >
                   💰 Revenue & Earnings
                 </Link>
                 <Link
                   href="/donor/analytics"
-                  onClick={() => setMobileMenuOpen(false)}
+                  onClick={(e) => {
+                    setMobileMenuOpen(false);
+                    handleNavClick(e, '/donor/analytics');
+                  }}
                   className="block px-4 py-2.5 rounded-xl text-xs font-bold text-slate-700 hover:bg-slate-50"
                 >
                   📊 Impact Analytics
                 </Link>
                 <Link
                   href="/donor/certificate"
-                  onClick={() => setMobileMenuOpen(false)}
+                  onClick={(e) => {
+                    setMobileMenuOpen(false);
+                    handleNavClick(e, '/donor/certificate');
+                  }}
                   className="block px-4 py-2.5 rounded-xl text-xs font-bold text-slate-700 hover:bg-slate-50"
                 >
                   📜 CSR Certificate
@@ -528,7 +596,10 @@ export default function Navbar() {
               <>
                 <Link
                   href="/feed"
-                  onClick={() => setMobileMenuOpen(false)}
+                  onClick={(e) => {
+                    setMobileMenuOpen(false);
+                    handleNavClick(e, '/feed');
+                  }}
                   className="block px-4 py-2.5 rounded-xl text-xs font-bold text-slate-700 hover:bg-slate-50"
                 >
                   🥗 Explore Feed
@@ -536,26 +607,24 @@ export default function Navbar() {
 
                 <Link
                   href="/restaurants"
-                  onClick={() => setMobileMenuOpen(false)}
+                  onClick={(e) => {
+                    setMobileMenuOpen(false);
+                    handleNavClick(e, '/restaurants');
+                  }}
                   className="block px-4 py-2.5 rounded-xl text-xs font-bold text-slate-700 hover:bg-slate-50"
                 >
                   🏬 Explore Restaurants
                 </Link>
-
-                {/* <Link
-                  href="/sponsor"
-                  onClick={() => setMobileMenuOpen(false)}
-                  className="block px-4 py-2.5 rounded-xl text-xs font-bold text-slate-700 hover:bg-slate-50"
-                >
-                  ❤️ Sponsor a Meal
-                </Link> */}
               </>
             )}
 
             {user && role === 'RECIPIENT' && (
               <Link
                 href="/my-claims"
-                onClick={() => setMobileMenuOpen(false)}
+                onClick={(e) => {
+                  setMobileMenuOpen(false);
+                  handleNavClick(e, '/my-claims');
+                }}
                 className="block px-4 py-2.5 rounded-xl text-xs font-bold text-slate-700 hover:bg-slate-50"
               >
                 🎟️ My Claims
@@ -565,7 +634,10 @@ export default function Navbar() {
             <div className="pt-2 border-t border-slate-100">
               <Link
                 href="/reviews"
-                onClick={() => setMobileMenuOpen(false)}
+                onClick={(e) => {
+                  setMobileMenuOpen(false);
+                  handleNavClick(e, '/reviews');
+                }}
                 className="block px-4 py-2 rounded-xl text-xs font-bold text-slate-700 hover:bg-slate-50"
               >
                 ⭐ Reviews
@@ -573,7 +645,10 @@ export default function Navbar() {
 
               <Link
                 href="/about"
-                onClick={() => setMobileMenuOpen(false)}
+                onClick={(e) => {
+                  setMobileMenuOpen(false);
+                  handleNavClick(e, '/about');
+                }}
                 className="block px-4 py-2 rounded-xl text-xs font-bold text-slate-700 hover:bg-slate-50"
               >
                 ℹ️ About Us
@@ -581,7 +656,10 @@ export default function Navbar() {
 
               <Link
                 href="/contact"
-                onClick={() => setMobileMenuOpen(false)}
+                onClick={(e) => {
+                  setMobileMenuOpen(false);
+                  handleNavClick(e, '/contact');
+                }}
                 className="block px-4 py-2 rounded-xl text-xs font-bold text-slate-700 hover:bg-slate-50"
               >
                 📩 Contact Us
@@ -631,6 +709,54 @@ export default function Navbar() {
           </div>
         )}
       </nav>
+
+      {/* 🔒 INCOMPLETE PROFILE WARNING MODAL */}
+      <AnimatePresence>
+        {showIncompleteModal && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center px-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowIncompleteModal(false)}
+              className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm"
+            />
+
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 15 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 15 }}
+              transition={{ type: 'spring', duration: 0.3 }}
+              className="relative bg-white rounded-3xl p-6 sm:p-8 max-w-sm w-full shadow-2xl border border-slate-100 text-center space-y-5 z-10"
+            >
+              <div className="w-14 h-14 bg-amber-100 text-amber-600 rounded-2xl flex items-center justify-center mx-auto shadow-xs">
+                <ShieldAlert className="w-7 h-7 text-amber-600" />
+              </div>
+
+              <div className="space-y-1.5">
+                <h3 className="text-xl font-black text-slate-900">Profile Setup Required 🔒</h3>
+                <p className="text-slate-500 text-xs sm:text-sm leading-relaxed">
+                  Please complete your profile details and save changes before navigating around BiteShare.
+                </p>
+              </div>
+
+              <div className="pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowIncompleteModal(false);
+                    router.push('/profile');
+                  }}
+                  className="w-full py-3.5 px-4 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-2xl transition shadow-md flex items-center justify-center gap-2"
+                >
+                  <span>Return To Profile Page</span>
+                  <ArrowRight className="w-4 h-4" />
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       {/* 🔴 LOGOUT CONFIRMATION POPUP MODAL */}
       <AnimatePresence>

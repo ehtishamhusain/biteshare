@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import React, { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
@@ -17,6 +17,7 @@ import {
   AlertTriangle,
   CheckCircle2,
   FileText,
+  Mail,
 } from 'lucide-react';
 
 export default function SignupPage() {
@@ -28,6 +29,7 @@ export default function SignupPage() {
   const [role, setRole] = useState<'DONOR' | 'RECIPIENT'>('RECIPIENT');
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+  const [emailSent, setEmailSent] = useState(false);
 
   // Modal States
   const [showModal, setShowModal] = useState(false);
@@ -50,8 +52,8 @@ export default function SignupPage() {
 
   const isPasswordStrong = Object.values(passwordCriteria).every(Boolean);
 
-  // Triggers when user submits form -> validates form and opens modal
-  const handleOpenModal = (e: React.FormEvent) => {
+  // 💡 Using React.SyntheticEvent<HTMLFormElement> permanently eliminates the FormEvent deprecation warning
+  const handleOpenModal = (e: React.SyntheticEvent<HTMLFormElement>) => {
     e.preventDefault();
     setErrorMsg('');
 
@@ -67,7 +69,6 @@ export default function SignupPage() {
       return;
     }
 
-    // Reset agreement state and show modal
     setAgreedToTerms(false);
     setShowModal(true);
   };
@@ -80,12 +81,13 @@ export default function SignupPage() {
     setErrorMsg('');
 
     const cleanEmail = email.trim();
+    const redirectUrl = `${window.location.origin}/auth/callback`;
 
-    // 1. Submit to Supabase Auth
     const { data, error } = await supabase.auth.signUp({
       email: cleanEmail,
       password,
       options: {
+        emailRedirectTo: redirectUrl,
         data: {
           role,
         },
@@ -99,7 +101,6 @@ export default function SignupPage() {
       return;
     }
 
-    // Check if account already exists
     if (data.user && data.user.identities && data.user.identities.length === 0) {
       setErrorMsg('An account with this email address already exists. Please log in.');
       setShowModal(false);
@@ -108,20 +109,11 @@ export default function SignupPage() {
     }
 
     if (data.user) {
-      // 2. Pre-create initial profile row to prevent foreign key errors
-      await supabase.from('profiles').upsert({
-        id: data.user.id,
-        email: cleanEmail,
-        role: role,
-        updated_at: new Date().toISOString(),
-      });
-
-      // 3. STEP 1 COMPLETE: Direct user to Profile Setup first
       setShowModal(false);
-      router.push('/profile');
-    } else {
-      setLoading(false);
+      setEmailSent(true);
     }
+
+    setLoading(false);
   };
 
   return (
@@ -145,147 +137,171 @@ export default function SignupPage() {
 
       <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
         <div className="bg-white py-8 px-6 shadow-sm border border-slate-200 rounded-2xl sm:px-10 space-y-6">
-          {errorMsg && (
-            <div className="p-4 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs font-semibold flex items-center gap-2">
-              <AlertCircle className="w-4 h-4 flex-shrink-0" />
-              <span>{errorMsg}</span>
-            </div>
-          )}
-
-          <form className="space-y-6" onSubmit={handleOpenModal}>
-            {/* Account Role Selection */}
-            <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">
-                I want to register as a:
-              </label>
-              <div className="grid grid-cols-2 gap-3">
-                <button
-                  type="button"
-                  onClick={() => setRole('RECIPIENT')}
-                  className={`p-3 rounded-xl border text-xs font-bold transition flex flex-col items-center gap-2 ${
-                    role === 'RECIPIENT'
-                      ? 'bg-emerald-50 border-emerald-500 text-emerald-800 ring-2 ring-emerald-500/20'
-                      : 'border-slate-200 text-slate-600 hover:bg-slate-50'
-                  }`}
-                >
-                  <Heart className="w-5 h-5 text-emerald-600" />
-                  <span>Recipient / NGO</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setRole('DONOR')}
-                  className={`p-3 rounded-xl border text-xs font-bold transition flex flex-col items-center gap-2 ${
-                    role === 'DONOR'
-                      ? 'bg-emerald-50 border-emerald-500 text-emerald-800 ring-2 ring-emerald-500/20'
-                      : 'border-slate-200 text-slate-600 hover:bg-slate-50'
-                  }`}
-                >
-                  <Utensils className="w-5 h-5 text-emerald-600" />
-                  <span>Food Donor / Restaurant</span>
-                </button>
+          
+          {emailSent ? (
+            /* EMAIL VERIFICATION SENT STATE */
+            <div className="text-center py-4 space-y-4">
+              <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-2xl flex items-center justify-center mx-auto border border-emerald-200">
+                <Mail className="w-8 h-8" />
+              </div>
+              <div className="space-y-1">
+                <h3 className="text-xl font-black text-slate-900">Check Your Inbox! ✉️</h3>
+                <p className="text-xs text-slate-600 leading-relaxed font-medium pt-1">
+                  We've sent a verification link to <strong className="text-slate-800">{email}</strong>.
+                </p>
+                <p className="text-xs text-slate-600 leading-relaxed font-medium">
+                  Please click the link in your email to confirm your address and set up your BiteShare profile.
+                </p>
+              </div>
+              <div className="pt-3 border-t border-slate-100 text-[11px] text-slate-400 font-medium">
+                Didn't receive an email? Check your spam folder or contact support at <a href="mailto:support@biteshare.in" className="text-emerald-600 underline font-bold">support@biteshare.in</a>
               </div>
             </div>
-
-            {/* Email Input */}
-            <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">
-                Email Address
-              </label>
-              <input
-                type="email"
-                required
-                value={email}
-                onChange={(e) => {
-                  setEmail(e.target.value);
-                  if (errorMsg) setErrorMsg('');
-                }}
-                placeholder="you@example.com"
-                className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-emerald-500 outline-none text-sm text-slate-800"
-              />
-            </div>
-
-            {/* Password Input */}
-            <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">
-                Password
-              </label>
-              <div className="relative">
-                <input
-                  type={showPassword ? 'text' : 'password'}
-                  required
-                  value={password}
-                  onChange={(e) => {
-                    setPassword(e.target.value);
-                    if (errorMsg) setErrorMsg('');
-                  }}
-                  placeholder="••••••••"
-                  className="w-full px-4 py-2.5 pr-10 rounded-xl border border-slate-200 focus:ring-2 focus:ring-emerald-500 outline-none text-sm text-slate-800"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition focus:outline-none p-1"
-                  title={showPassword ? 'Hide password' : 'Show password'}
-                >
-                  {showPassword ? (
-                    <EyeOff className="w-4 h-4 text-slate-500" />
-                  ) : (
-                    <Eye className="w-4 h-4 text-slate-400" />
-                  )}
-                </button>
-              </div>
-
-              {/* Password Requirements Checklist */}
-              {password.length > 0 && (
-                <div className="mt-3 p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-1.5 text-xs">
-                  <div className="font-bold text-slate-700 text-[11px] uppercase tracking-wider mb-1">
-                    Password Security Requirements:
-                  </div>
-
-                  <div className={`flex items-center gap-2 ${passwordCriteria.minLength ? 'text-emerald-700 font-semibold' : 'text-slate-500'}`}>
-                    {passwordCriteria.minLength ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <X className="w-3.5 h-3.5 text-slate-400" />}
-                    <span>At least 8 characters long</span>
-                  </div>
-
-                  <div className={`flex items-center gap-2 ${passwordCriteria.hasUppercase ? 'text-emerald-700 font-semibold' : 'text-slate-500'}`}>
-                    {passwordCriteria.hasUppercase ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <X className="w-3.5 h-3.5 text-slate-400" />}
-                    <span>At least one uppercase letter (A-Z)</span>
-                  </div>
-
-                  <div className={`flex items-center gap-2 ${passwordCriteria.hasLowercase ? 'text-emerald-700 font-semibold' : 'text-slate-500'}`}>
-                    {passwordCriteria.hasLowercase ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <X className="w-3.5 h-3.5 text-slate-400" />}
-                    <span>At least one lowercase letter (a-z)</span>
-                  </div>
-
-                  <div className={`flex items-center gap-2 ${passwordCriteria.hasNumber ? 'text-emerald-700 font-semibold' : 'text-slate-500'}`}>
-                    {passwordCriteria.hasNumber ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <X className="w-3.5 h-3.5 text-slate-400" />}
-                    <span>At least one number (0-9)</span>
-                  </div>
-
-                  <div className={`flex items-center gap-2 ${passwordCriteria.hasSpecialChar ? 'text-emerald-700 font-semibold' : 'text-slate-500'}`}>
-                    {passwordCriteria.hasSpecialChar ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <X className="w-3.5 h-3.5 text-slate-400" />}
-                    <span>At least one special character (!@#$%^&*)</span>
-                  </div>
+          ) : (
+            /* SIGNUP FORM */
+            <>
+              {errorMsg && (
+                <div className="p-4 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs font-semibold flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                  <span>{errorMsg}</span>
                 </div>
               )}
-            </div>
 
-            <button
-              type="submit"
-              disabled={password.length > 0 && !isPasswordStrong}
-              className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 px-4 rounded-xl transition shadow-sm flex items-center justify-center gap-2 text-sm disabled:opacity-50"
-            >
-              <span>Continue to Guidelines</span>
-              <ArrowRight className="w-4 h-4" />
-            </button>
-          </form>
+              <form className="space-y-6" onSubmit={handleOpenModal}>
+                {/* Account Role Selection */}
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">
+                    I want to register as a:
+                  </label>
+                  <div className="grid grid-cols-2 gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setRole('RECIPIENT')}
+                      className={`p-3 rounded-xl border text-xs font-bold transition flex flex-col items-center gap-2 ${
+                        role === 'RECIPIENT'
+                          ? 'bg-emerald-50 border-emerald-500 text-emerald-800 ring-2 ring-emerald-500/20'
+                          : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                      }`}
+                    >
+                      <Heart className="w-5 h-5 text-emerald-600" />
+                      <span>Recipient / NGO</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setRole('DONOR')}
+                      className={`p-3 rounded-xl border text-xs font-bold transition flex flex-col items-center gap-2 ${
+                        role === 'DONOR'
+                          ? 'bg-emerald-50 border-emerald-500 text-emerald-800 ring-2 ring-emerald-500/20'
+                          : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                      }`}
+                    >
+                      <Utensils className="w-5 h-5 text-emerald-600" />
+                      <span>Food Donor / Restaurant</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Email Input */}
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">
+                    Email Address
+                  </label>
+                  <input
+                    type="email"
+                    required
+                    value={email}
+                    onChange={(e) => {
+                      setEmail(e.target.value);
+                      if (errorMsg) setErrorMsg('');
+                    }}
+                    placeholder="you@example.com"
+                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-emerald-500 outline-none text-sm text-slate-800"
+                  />
+                </div>
+
+                {/* Password Input */}
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">
+                    Password
+                  </label>
+                  <div className="relative">
+                    <input
+                      type={showPassword ? 'text' : 'password'}
+                      required
+                      value={password}
+                      onChange={(e) => {
+                        setPassword(e.target.value);
+                        if (errorMsg) setErrorMsg('');
+                      }}
+                      placeholder="••••••••"
+                      className="w-full px-4 py-2.5 pr-10 rounded-xl border border-slate-200 focus:ring-2 focus:ring-emerald-500 outline-none text-sm text-slate-800"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition focus:outline-none p-1"
+                      title={showPassword ? 'Hide password' : 'Show password'}
+                    >
+                      {showPassword ? (
+                        <EyeOff className="w-4 h-4 text-slate-500" />
+                      ) : (
+                        <Eye className="w-4 h-4 text-slate-400" />
+                      )}
+                    </button>
+                  </div>
+
+                  {/* Password Requirements Checklist */}
+                  {password.length > 0 && (
+                    <div className="mt-3 p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-1.5 text-xs">
+                      <div className="font-bold text-slate-700 text-[11px] uppercase tracking-wider mb-1">
+                        Password Security Requirements:
+                      </div>
+
+                      <div className={`flex items-center gap-2 ${passwordCriteria.minLength ? 'text-emerald-700 font-semibold' : 'text-slate-500'}`}>
+                        {passwordCriteria.minLength ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <X className="w-3.5 h-3.5 text-slate-400" />}
+                        <span>At least 8 characters long</span>
+                      </div>
+
+                      <div className={`flex items-center gap-2 ${passwordCriteria.hasUppercase ? 'text-emerald-700 font-semibold' : 'text-slate-500'}`}>
+                        {passwordCriteria.hasUppercase ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <X className="w-3.5 h-3.5 text-slate-400" />}
+                        <span>At least one uppercase letter (A-Z)</span>
+                      </div>
+
+                      <div className={`flex items-center gap-2 ${passwordCriteria.hasLowercase ? 'text-emerald-700 font-semibold' : 'text-slate-500'}`}>
+                        {passwordCriteria.hasLowercase ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <X className="w-3.5 h-3.5 text-slate-400" />}
+                        <span>At least one lowercase letter (a-z)</span>
+                      </div>
+
+                      <div className={`flex items-center gap-2 ${passwordCriteria.hasNumber ? 'text-emerald-700 font-semibold' : 'text-slate-500'}`}>
+                        {passwordCriteria.hasNumber ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <X className="w-3.5 h-3.5 text-slate-400" />}
+                        <span>At least one number (0-9)</span>
+                      </div>
+
+                      <div className={`flex items-center gap-2 ${passwordCriteria.hasSpecialChar ? 'text-emerald-700 font-semibold' : 'text-slate-500'}`}>
+                        {passwordCriteria.hasSpecialChar ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <X className="w-3.5 h-3.5 text-slate-400" />}
+                        <span>At least one special character (!@#$%^&*)</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={password.length > 0 && !isPasswordStrong}
+                  className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 px-4 rounded-xl transition shadow-sm flex items-center justify-center gap-2 text-sm disabled:opacity-50"
+                >
+                  <span>Continue to Guidelines</span>
+                  <ArrowRight className="w-4 h-4" />
+                </button>
+              </form>
+            </>
+          )}
+
         </div>
       </div>
 
-      {/* ========================================================================= */}
-      {/* EXPANDED & ENLARGED POPUP MODAL                                           */}
-      {/* ========================================================================= */}
+      {/* POPUP MODAL */}
       {showModal && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-md flex items-center justify-center p-4 sm:p-6">
           <div className="bg-white rounded-3xl max-w-2xl w-full p-6 sm:p-10 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-200 max-h-[88vh] flex flex-col justify-between">
@@ -406,7 +422,7 @@ export default function SignupPage() {
               )}
             </div>
 
-            {/* Modal Footer with Required Checkbox & Action Buttons */}
+            {/* Modal Footer */}
             <div className="pt-5 mt-5 border-t border-slate-100 space-y-4">
               <label className="flex items-start gap-3 cursor-pointer p-4 rounded-2xl bg-slate-50 border border-slate-200 hover:bg-slate-100/80 transition">
                 <input
@@ -435,7 +451,7 @@ export default function SignupPage() {
                   onClick={handleFinalSignUp}
                   className="w-2/3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3.5 px-4 rounded-xl transition shadow-md flex items-center justify-center gap-2 text-xs sm:text-sm disabled:opacity-50"
                 >
-                  <span>{loading ? 'Registering Account...' : 'I Agree & Setup Profile'}</span>
+                  <span>{loading ? 'Sending Verification Link...' : 'I Agree & Send Verification Email'}</span>
                   <ArrowRight className="w-4 h-4" />
                 </button>
               </div>

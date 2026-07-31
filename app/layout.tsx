@@ -3,6 +3,7 @@ import { Inter } from 'next/font/google';
 import './globals.css';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
+import ProfileGuard from '@/components/ProfileGuard';
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -25,8 +26,12 @@ export default function RootLayout({
         {/* Global Sticky Header */}
         <Navbar />
 
-        {/* Dynamic Page Content */}
-        <main className="flex-grow">{children}</main>
+        {/* Dynamic Page Content Protected by ProfileGuard */}
+        <main className="flex-grow">
+          <ProfileGuard>
+            {children}
+          </ProfileGuard>
+        </main>
 
         {/* Global Footer */}
         <Footer />

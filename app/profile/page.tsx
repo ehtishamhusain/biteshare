@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import {
@@ -15,7 +15,7 @@ import {
   Globe,
   RefreshCw,
   Store,
-  Locate,
+  Navigation,
 } from 'lucide-react';
 
 export default function ProfilePage() {
@@ -42,6 +42,24 @@ export default function ProfilePage() {
     fetchProfile();
   }, []);
 
+  const autoDetectDonorGPS = () => {
+    if ('geolocation' in navigator) {
+      setDetectingGps(true);
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          setLatitude(position.coords.latitude);
+          setLongitude(position.coords.longitude);
+          setDetectingGps(false);
+        },
+        (err) => {
+          console.warn('Auto GPS detection failed or permission denied:', err.message);
+          setDetectingGps(false);
+        },
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+      );
+    }
+  };
+
   const fetchProfile = async () => {
     setLoading(true);
     const {
@@ -53,11 +71,15 @@ export default function ProfilePage() {
       return;
     }
 
+    // Determine initial role from Auth metadata or default
+    let activeRole: 'DONOR' | 'RECIPIENT' = 'RECIPIENT';
     if (user.user_metadata?.role) {
       const metaRole = String(user.user_metadata.role).toUpperCase();
-      setRole(metaRole === 'DONOR' ? 'DONOR' : 'RECIPIENT');
+      activeRole = metaRole === 'DONOR' ? 'DONOR' : 'RECIPIENT';
+      setRole(activeRole);
     }
 
+    // Fetch existing profile row if it exists
     const { data: profile, error } = await supabase
       .from('profiles')
       .select('*')
@@ -65,52 +87,36 @@ export default function ProfilePage() {
       .maybeSingle();
 
     if (profile && !error) {
-      const fetchedRole = String(profile.role || 'RECIPIENT').toUpperCase();
-      setRole(fetchedRole === 'DONOR' ? 'DONOR' : 'RECIPIENT');
+      const fetchedRole = String(profile.role || user.user_metadata?.role || 'RECIPIENT').toUpperCase();
+      activeRole = fetchedRole === 'DONOR' ? 'DONOR' : 'RECIPIENT';
+      setRole(activeRole);
       setFullName(profile.full_name || '');
       setOrganizationName(profile.organization_name || '');
       setPhone(profile.phone || '');
       setStreetAddress(profile.street_address || '');
       setCity(profile.city || '');
       setState(profile.state || '');
-      setPincode(profile.pincode || profile.postal_code || '');
+      
+      // Clean and format fetched pincode to digits only (max 6)
+      const cleanPincode = (profile.pincode || profile.postal_code || '').replace(/\D/g, '').slice(0, 6);
+      setPincode(cleanPincode);
       setCountry(profile.country || 'India');
-      setLatitude(profile.latitude ? Number(profile.latitude) : null);
-      setLongitude(profile.longitude ? Number(profile.longitude) : null);
+      
+      if (profile.latitude && profile.longitude) {
+        setLatitude(Number(profile.latitude));
+        setLongitude(Number(profile.longitude));
+      }
     }
+
+    // ⚡ Automatic GPS detection on page load ONLY for Donors / Restaurants
+    if (activeRole === 'DONOR') {
+      autoDetectDonorGPS();
+    }
+
     setLoading(false);
   };
 
-  // 🎯 Detect Device GPS Coordinates
-  const handleDetectGPS = () => {
-    setDetectingGps(true);
-    setMessage(null);
-
-    if ('geolocation' in navigator) {
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          setLatitude(position.coords.latitude);
-          setLongitude(position.coords.longitude);
-          setMessage({ text: '🎯 Exact GPS location captured successfully!', type: 'success' });
-          setDetectingGps(false);
-        },
-        (err) => {
-          console.warn('GPS detection failed:', err.message);
-          setMessage({
-            text: 'Could not detect browser GPS. Please allow location permissions or type your address.',
-            type: 'error',
-          });
-          setDetectingGps(false);
-        },
-        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
-      );
-    } else {
-      setMessage({ text: 'Geolocation is not supported by your browser.', type: 'error' });
-      setDetectingGps(false);
-    }
-  };
-
-  const handleSaveProfile = async (e: React.FormEvent) => {
+  const handleSaveProfile = async (e: React.SyntheticEvent<HTMLFormElement>) => {
     e.preventDefault();
     setSaving(true);
     setMessage(null);
@@ -139,7 +145,7 @@ export default function ProfilePage() {
       return;
     }
 
-    // 🔒 Validation Check 3: Restaurant / Organization Name for Donors
+    // 🔒 Validation Check 3: Restaurant / Business Name for Donors
     if (role === 'DONOR' && !organizationName.trim()) {
       setMessage({
         text: 'Please enter your Restaurant / Business Name before saving.',
@@ -149,12 +155,23 @@ export default function ProfilePage() {
       return;
     }
 
+    // 🔒 Validation Check 4: Strict 6-Digit Pincode Requirement
+    const cleanPincode = pincode.replace(/\D/g, '').slice(0, 6);
+    if (cleanPincode.length !== 6) {
+      setMessage({
+        text: 'Please enter a valid 6-digit Pincode.',
+        type: 'error',
+      });
+      setSaving(false);
+      return;
+    }
+
     let finalLat = latitude;
     let finalLng = longitude;
 
-    // 🌍 Auto-geocode address if lat/lng are missing
-    if (!finalLat || !finalLng) {
-      const fullQuery = [streetAddress.trim(), city.trim(), state.trim(), pincode.trim(), country.trim()]
+    // 🌍 For Donors: Auto-geocode address if GPS coordinates are missing
+    if (role === 'DONOR' && (!finalLat || !finalLng)) {
+      const fullQuery = [streetAddress.trim(), city.trim(), state.trim(), cleanPincode, country.trim()]
         .filter(Boolean)
         .join(', ');
 
@@ -178,6 +195,12 @@ export default function ProfilePage() {
       }
     }
 
+    // For Recipients / NGOs: Ensure latitude and longitude are explicitly null
+    if (role === 'RECIPIENT') {
+      finalLat = null;
+      finalLng = null;
+    }
+
     const upsertPayload: any = {
       id: user.id,
       email: user.email,
@@ -188,8 +211,8 @@ export default function ProfilePage() {
       street_address: streetAddress.trim(),
       city: city.trim(),
       state: state.trim(),
-      pincode: pincode.trim(),
-      postal_code: pincode.trim(),
+      pincode: cleanPincode,
+      postal_code: cleanPincode,
       country: country.trim(),
       latitude: finalLat,
       longitude: finalLng,
@@ -204,7 +227,12 @@ export default function ProfilePage() {
       setMessage({ text: 'Error saving profile: ' + error.message, type: 'error' });
       setSaving(false);
     } else {
-      setMessage({ text: '🎉 Profile saved! Redirecting to your dashboard...', type: 'success' });
+      // 💡 INSTANT SIGNAL: Tell Navbar & ProfileGuard across the app that profile was saved!
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new Event('profileUpdated'));
+      }
+
+      setMessage({ text: '🎉 Profile saved successfully! Redirecting...', type: 'success' });
 
       setTimeout(() => {
         if (role === 'DONOR') {
@@ -253,7 +281,7 @@ export default function ProfilePage() {
             )}
 
             <form onSubmit={handleSaveProfile} className="space-y-6">
-              {/* Role Indicator Badge */}
+              {/* READ-ONLY ACCOUNT TYPE BADGE */}
               <div className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-200">
                 <div className="flex items-center gap-2">
                   <Shield className="w-5 h-5 text-emerald-600" />
@@ -261,8 +289,8 @@ export default function ProfilePage() {
                     Account Type:
                   </span>
                 </div>
-                <span className="px-3 py-1 bg-emerald-100 text-emerald-800 rounded-full text-xs font-black uppercase tracking-wider border border-emerald-200">
-                  {role === 'DONOR' ? 'Food Donor / Business' : 'Recipient / Community Shelter'}
+                <span className="px-3.5 py-1.5 bg-emerald-100 text-emerald-800 rounded-full text-xs font-black uppercase tracking-wider border border-emerald-200">
+                  {role === 'DONOR' ? 'Food Donor / Restaurant' : 'Recipient / NGO'}
                 </span>
               </div>
 
@@ -286,7 +314,7 @@ export default function ProfilePage() {
                   </div>
                 </div>
 
-                {/* 🏬 RESTAURANT / ORGANIZATION NAME (REQUIRED FOR DONORS) */}
+                {/* 🏬 RESTAURANT / ORGANIZATION NAME */}
                 <div>
                   <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">
                     {role === 'DONOR' ? (
@@ -341,7 +369,7 @@ export default function ProfilePage() {
                 </div>
               </div>
 
-              {/* Structured Address */}
+              {/* Structured Address Details */}
               <div className="space-y-4 pt-4 border-t border-slate-100">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-700">
@@ -349,15 +377,24 @@ export default function ProfilePage() {
                     <span>Structured Address Details</span>
                   </div>
 
-                  <button
-                    type="button"
-                    onClick={handleDetectGPS}
-                    disabled={detectingGps}
-                    className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 font-extrabold text-[11px] rounded-xl transition flex items-center gap-1.5 disabled:opacity-50"
-                  >
-                    <Locate className={`w-3.5 h-3.5 text-emerald-600 ${detectingGps ? 'animate-spin' : ''}`} />
-                    <span>{detectingGps ? 'Detecting GPS...' : 'Detect GPS Location'}</span>
-                  </button>
+                  {/* Automatic GPS status indicator ONLY for Donors / Restaurants */}
+                  {role === 'DONOR' && (
+                    <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 text-[11px] font-extrabold">
+                      {detectingGps ? (
+                        <>
+                          <RefreshCw className="w-3 h-3 animate-spin text-emerald-600" />
+                          <span>Detecting Store GPS...</span>
+                        </>
+                      ) : latitude && longitude ? (
+                        <>
+                          <Navigation className="w-3 h-3 text-emerald-600 fill-emerald-600" />
+                          <span>📍 GPS Location Auto-Captured</span>
+                        </>
+                      ) : (
+                        <span className="text-slate-500">Auto-Detecting Location...</span>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 <div>
@@ -403,17 +440,25 @@ export default function ProfilePage() {
                     />
                   </div>
 
+                  {/* 📮 PINCODE (STRICT 6-DIGIT NUMERIC ONLY) */}
                   <div>
                     <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">
-                      Pincode
+                      Pincode <span className="text-slate-400 font-medium">(6 digits)</span>
                     </label>
                     <input
                       type="text"
                       required
+                      inputMode="numeric"
+                      pattern="\d{6}"
+                      maxLength={6}
                       value={pincode}
-                      onChange={(e) => setPincode(e.target.value)}
+                      onChange={(e) => {
+                        // Strips any non-digit character and restricts length to max 6
+                        const numericOnly = e.target.value.replace(/\D/g, '').slice(0, 6);
+                        setPincode(numericOnly);
+                      }}
                       placeholder="243001"
-                      className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-emerald-500 outline-none text-sm text-slate-800 bg-slate-50/50"
+                      className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-emerald-500 outline-none text-sm text-slate-800 bg-slate-50/50 tracking-wider font-mono"
                     />
                   </div>
 
