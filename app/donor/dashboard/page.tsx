@@ -42,7 +42,7 @@ export default function DonorDashboardPage() {
   const [country, setCountry] = useState('');
   const [fullPickupAddress, setFullPickupAddress] = useState('');
   
-  // Dynamic Lat/Lng (Set by GPS or Dynamic Geocoding)
+  // Dynamic Lat/Lng
   const [latitude, setLatitude] = useState<number | null>(null);
   const [longitude, setLongitude] = useState<number | null>(null);
   const [detectingLocation, setDetectingLocation] = useState(false);
@@ -50,7 +50,6 @@ export default function DonorDashboardPage() {
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
 
-  // 🔄 Auto Pre-Fill "Price for All Items" when Qty or Price changes
   useEffect(() => {
     if (!isManualEdited) {
       const q = quantity === '' ? 0 : Number(quantity);
@@ -76,7 +75,6 @@ export default function DonorDashboardPage() {
     };
   }, []);
 
-  // 🏠 Fetch & Pre-fill Address from User Profile Table
   const fetchDonorProfileAndBundles = async () => {
     const {
       data: { user },
@@ -88,10 +86,6 @@ export default function DonorDashboardPage() {
         .select('*')
         .eq('id', user.id)
         .maybeSingle();
-
-      if (error) {
-        console.error('Error fetching profiles table:', error);
-      }
 
       if (profile) {
         const street = profile.street_address || profile.address || '';
@@ -146,9 +140,9 @@ export default function DonorDashboardPage() {
     setLoadingList(false);
   };
 
-  // 📍 GPS Live Geolocation Button Handler
+  // 📍 GPS Live Geolocation Button Handler (Safely scoped to client browser)
   const handleGetGpsLocation = () => {
-    if (!navigator.geolocation) {
+    if (typeof window === 'undefined' || !navigator.geolocation) {
       setMessage({ text: 'Geolocation is not supported by your browser.', type: 'error' });
       return;
     }
@@ -202,7 +196,6 @@ export default function DonorDashboardPage() {
     );
   };
 
-  // 🌐 Helper Function: Geocode Address String dynamically
   const geocodeAddressString = async (addressQuery: string) => {
     if (!addressQuery.trim()) return null;
     try {
@@ -222,7 +215,6 @@ export default function DonorDashboardPage() {
     return null;
   };
 
-  // 📊 DISCOUNT CALCULATIONS
   const numQty = quantity === '' ? 0 : Number(quantity);
   const numPrice = pricePerItem === '' ? 0 : Number(pricePerItem);
   const stdTotal = numQty * numPrice;
@@ -269,7 +261,6 @@ export default function DonorDashboardPage() {
       [streetAddress, city, pincode, stateVal, country].filter(Boolean).join(', ') ||
       'Store Location';
 
-    // 🎯 DYNAMIC LOCATION RESOLUTION
     let finalLat = latitude;
     let finalLng = longitude;
 
@@ -302,7 +293,7 @@ export default function DonorDashboardPage() {
       latitude: finalLat,
       longitude: finalLng,
       pickup_window_end: finalPickupEnd,
-      expires_at: finalPickupEnd, // ⚡ Synced with Feed query expiry check
+      expires_at: finalPickupEnd,
       status: 'AVAILABLE',
       created_at: new Date().toISOString(),
     };
@@ -420,7 +411,6 @@ export default function DonorDashboardPage() {
               />
             </div>
 
-            {/* Quantity, Single Price, Price for All */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               <div>
                 <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">
@@ -481,7 +471,6 @@ export default function DonorDashboardPage() {
               </div>
             </div>
 
-            {/* LIVE DISCOUNT BADGE */}
             {discountPercent > 0 ? (
               <div className="p-3 bg-amber-50 border border-amber-200 text-amber-900 rounded-2xl text-xs font-bold flex items-center justify-between gap-2">
                 <div className="flex items-center gap-2">
@@ -500,7 +489,6 @@ export default function DonorDashboardPage() {
               </div>
             ) : null}
 
-            {/* Pickup Close Time */}
             <div>
               <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">
                 Pickup Window Close Time
@@ -513,7 +501,6 @@ export default function DonorDashboardPage() {
               />
             </div>
 
-            {/* 📍 PRE-FILLED LOCATION FIELDS (FROM PROFILES TABLE) */}
             <div className="space-y-4 pt-3 border-t border-slate-100">
               <div className="flex items-center justify-between flex-wrap gap-2">
                 <div>
@@ -545,7 +532,6 @@ export default function DonorDashboardPage() {
                 </button>
               </div>
 
-              {/* Location Inputs */}
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                 <div className="sm:col-span-2">
                   <label className="block text-[11px] font-bold uppercase text-slate-500 mb-1">
@@ -635,7 +621,6 @@ export default function DonorDashboardPage() {
                 </div>
               </div>
 
-              {/* Combined Full Address Display */}
               <div>
                 <label className="block text-[11px] font-bold uppercase text-slate-500 mb-1">
                   Full Compiled Pickup Address
@@ -706,7 +691,6 @@ export default function DonorDashboardPage() {
               {publishedBundles.map((bundle) => {
                 const remaining = bundle.quantity_remaining ?? bundle.quantity ?? 0;
                 
-                // ⚡ Dynamic Expiry Check
                 const isExpired = bundle.pickup_window_end 
                   ? new Date(bundle.pickup_window_end).getTime() < new Date().getTime() 
                   : false;
@@ -727,7 +711,6 @@ export default function DonorDashboardPage() {
                   >
                     <div className="p-6 space-y-3">
                       <div className="flex items-center justify-between">
-                        {/* ⚡ Status Badge with Expiry Support */}
                         <span
                           className={`px-3 py-1 rounded-full text-[11px] font-black uppercase tracking-wider border inline-flex items-center gap-1 ${
                             isExpired && !isClaimedOut
