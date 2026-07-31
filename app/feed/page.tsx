@@ -80,10 +80,14 @@ export default function FeedPage() {
   const fetchBundles = async () => {
     setLoading(true);
 
+    const nowIso = new Date().toISOString();
+
+    // ⚡ Fetch only available items whose expiration time is in the future
     const { data, error } = await supabase
       .from('food_bundles')
       .select('*, donor:profiles(id, organization_name, full_name)')
       .eq('status', 'AVAILABLE')
+      .gt('expires_at', nowIso)
       .order('created_at', { ascending: false });
 
     if (!error && data) {
@@ -136,7 +140,14 @@ export default function FeedPage() {
 
   // 🔍 Real-time Search & Category Filtering Logic
   const filteredBundles = useMemo(() => {
+    const nowTime = new Date().getTime();
+
     return bundles.filter((bundle) => {
+      // Double check client-side expiry
+      if (bundle.expires_at && new Date(bundle.expires_at).getTime() < nowTime) {
+        return false;
+      }
+
       const query = searchQuery.toLowerCase().trim();
       const businessName = (
         bundle.donor?.organization_name ||

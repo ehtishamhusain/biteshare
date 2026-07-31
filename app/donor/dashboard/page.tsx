@@ -202,7 +202,7 @@ export default function DonorDashboardPage() {
     );
   };
 
-  // 🌐 Helper Function: Geocode Address String dynamically (e.g. "Delhi") if GPS wasn't used
+  // 🌐 Helper Function: Geocode Address String dynamically
   const geocodeAddressString = async (addressQuery: string) => {
     if (!addressQuery.trim()) return null;
     try {
@@ -269,8 +269,7 @@ export default function DonorDashboardPage() {
       [streetAddress, city, pincode, stateVal, country].filter(Boolean).join(', ') ||
       'Store Location';
 
-    // 🎯 DYNAMIC LOCATION RESOLUTION:
-    // If latitude/longitude are missing, dynamic geocode based on city/address (e.g. "Delhi")
+    // 🎯 DYNAMIC LOCATION RESOLUTION
     let finalLat = latitude;
     let finalLng = longitude;
 
@@ -303,6 +302,7 @@ export default function DonorDashboardPage() {
       latitude: finalLat,
       longitude: finalLng,
       pickup_window_end: finalPickupEnd,
+      expires_at: finalPickupEnd, // ⚡ Synced with Feed query expiry check
       status: 'AVAILABLE',
       created_at: new Date().toISOString(),
     };
@@ -705,6 +705,12 @@ export default function DonorDashboardPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {publishedBundles.map((bundle) => {
                 const remaining = bundle.quantity_remaining ?? bundle.quantity ?? 0;
+                
+                // ⚡ Dynamic Expiry Check
+                const isExpired = bundle.pickup_window_end 
+                  ? new Date(bundle.pickup_window_end).getTime() < new Date().getTime() 
+                  : false;
+
                 const isClaimedOut = remaining <= 0 || bundle.status === 'CLAIMED';
                 const price = bundle.price_per_item ?? bundle.price ?? 0;
                 const totalBatchPrice = bundle.total_price;
@@ -716,20 +722,23 @@ export default function DonorDashboardPage() {
                   <div
                     key={bundle.id}
                     className={`bg-white rounded-3xl border overflow-hidden shadow-xs hover:shadow-md transition flex flex-col justify-between ${
-                      isClaimedOut ? 'border-slate-200 opacity-75' : 'border-slate-200'
+                      isExpired && !isClaimedOut ? 'border-red-200 bg-red-50/20' : isClaimedOut ? 'border-slate-200 opacity-75' : 'border-slate-200'
                     }`}
                   >
                     <div className="p-6 space-y-3">
                       <div className="flex items-center justify-between">
+                        {/* ⚡ Status Badge with Expiry Support */}
                         <span
                           className={`px-3 py-1 rounded-full text-[11px] font-black uppercase tracking-wider border inline-flex items-center gap-1 ${
-                            isClaimedOut
+                            isExpired && !isClaimedOut
+                              ? 'bg-red-100 text-red-700 border-red-200'
+                              : isClaimedOut
                               ? 'bg-slate-100 text-slate-600 border-slate-200'
                               : 'bg-emerald-100 text-emerald-800 border-emerald-200'
                           }`}
                         >
-                          <span className={`w-2 h-2 rounded-full ${isClaimedOut ? 'bg-slate-400' : 'bg-emerald-600 animate-pulse'}`} />
-                          {isClaimedOut ? 'Fully Reserved' : `${remaining} Remaining`}
+                          <span className={`w-2 h-2 rounded-full ${isExpired && !isClaimedOut ? 'bg-red-500' : isClaimedOut ? 'bg-slate-400' : 'bg-emerald-600 animate-pulse'}`} />
+                          {isExpired && !isClaimedOut ? 'Expired' : isClaimedOut ? 'Fully Reserved' : `${remaining} Remaining`}
                         </span>
 
                         <span
@@ -765,9 +774,9 @@ export default function DonorDashboardPage() {
 
                         {bundle.pickup_window_end && (
                           <div className="flex items-center gap-1.5">
-                            <Clock className="w-3.5 h-3.5 text-amber-600 flex-shrink-0" />
-                            <span>
-                              Ends:{' '}
+                            <Clock className={`w-3.5 h-3.5 flex-shrink-0 ${isExpired && !isClaimedOut ? 'text-red-500' : 'text-amber-600'}`} />
+                            <span className={isExpired && !isClaimedOut ? 'text-red-600 font-bold' : ''}>
+                              {isExpired && !isClaimedOut ? 'Expired at: ' : 'Ends: '}
                               {new Date(bundle.pickup_window_end).toLocaleTimeString([], {
                                 hour: '2-digit',
                                 minute: '2-digit',
