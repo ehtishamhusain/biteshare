@@ -32,6 +32,8 @@ import {
   Check,
   X,
   ExternalLink,
+  CheckCircle,
+  AlertCircle,
 } from 'lucide-react';
 
 export default function AdminFinancePage() {
@@ -47,9 +49,11 @@ export default function AdminFinancePage() {
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'COMPLETED' | 'PENDING' | 'CANCELLED' | 'EXPIRED'>('ALL');
   const [dateFilter, setDateFilter] = useState<'ALL' | 'TODAY' | 'WEEK' | 'MONTH'>('ALL');
 
-  // Fee Request Modal & Copy States
+  // Fee Request Modal & Settlement States
   const [selectedStoreForEmail, setSelectedStoreForEmail] = useState<any | null>(null);
   const [copiedType, setCopiedType] = useState<'INVOICE' | 'EMAIL' | null>(null);
+  const [settlingStoreId, setSettlingStoreId] = useState<string | null>(null);
+  const [settlementSuccessMsg, setSettlementSuccessMsg] = useState<string | null>(null);
 
   // Verify Admin Security & Load All Claims
   const checkAdminAndFetchData = async () => {
@@ -164,6 +168,7 @@ export default function AdminFinancePage() {
         recipientName,
         recipientPhone: recipient.phone || 'N/A',
         recipientEmail: recipient.email || 'N/A',
+        isFeePaid: Boolean(claim.is_fee_paid),
         totalPrice: isCancelledOrExpired ? 0 : Number(claim.total_price || 0),
         platformFee: isCancelledOrExpired ? 0 : Number(claim.platform_fee || 0),
         donorPayout: isCancelledOrExpired ? 0 : Number(claim.donor_payout || 0),
@@ -247,7 +252,10 @@ export default function AdminFinancePage() {
           completedOrders: 0,
           grossGMV: 0,
           donorEarnings: 0,
-          platformFeeDue: 0,
+          totalPlatformFee: 0,    // Total 12% Fee
+          platformFeeDue: 0,      // Unpaid 12% Fee
+          settledFeeTotal: 0,     // Paid 12% Fee
+          unpaidClaimIds: [] as string[],
         });
       }
 
@@ -257,7 +265,14 @@ export default function AdminFinancePage() {
       if (c.status === 'COMPLETED' || c.status === 'PENDING') {
         store.grossGMV += c.totalPrice;
         store.donorEarnings += c.donorPayout;
-        store.platformFeeDue += c.platformFee;
+        store.totalPlatformFee += c.platformFee;
+
+        if (!c.isFeePaid) {
+          store.platformFeeDue += c.platformFee;
+          store.unpaidClaimIds.push(c.id);
+        } else {
+          store.settledFeeTotal += c.platformFee;
+        }
       }
 
       if (c.status === 'COMPLETED') {
@@ -265,8 +280,30 @@ export default function AdminFinancePage() {
       }
     });
 
-    return Array.from(map.values()).sort((a, b) => b.platformFeeDue - a.platformFeeDue);
+    return Array.from(map.values()).sort((a, b) => b.totalPlatformFee - a.totalPlatformFee);
   }, [filteredClaims]);
+
+  // Mark Platform Fee as Paid for a specific restaurant
+  const handleMarkFeeAsPaid = async (store: any) => {
+    if (!store.unpaidClaimIds || store.unpaidClaimIds.length === 0) return;
+
+    setSettlingStoreId(store.donorId);
+    setSettlementSuccessMsg(null);
+
+    const { error } = await supabase
+      .from('claims')
+      .update({ is_fee_paid: true })
+      .in('id', store.unpaidClaimIds);
+
+    if (error) {
+      alert('Failed to settle fee: ' + error.message);
+    } else {
+      setSettlementSuccessMsg(`🎉 Outstanding fee of ₹${store.platformFeeDue.toFixed(2)} marked as PAID for ${store.restaurantName}!`);
+      setTimeout(() => setSettlementSuccessMsg(null), 4000);
+      checkAdminAndFetchData();
+    }
+    setSettlingStoreId(null);
+  };
 
   // Financial Metrics Calculations
   const metrics = useMemo(() => {
@@ -329,6 +366,7 @@ export default function AdminFinancePage() {
       'Recipient Phone',
       'Claimed Quantity',
       'Claim Status',
+      'Fee Paid Status',
       'Gross Total (INR)',
       'BiteShare Fee 12% (INR)',
       'Donor Payout 88% (INR)',
@@ -351,6 +389,7 @@ export default function AdminFinancePage() {
         c.recipientPhone || 'N/A',
         c.claimed_quantity || 1,
         c.status || 'PENDING',
+        c.isFeePaid ? 'PAID' : 'UNPAID',
         c.totalPrice.toFixed(2),
         c.platformFee.toFixed(2),
         c.donorPayout.toFixed(2),
@@ -376,6 +415,8 @@ export default function AdminFinancePage() {
   const generateFullInvoiceText = (store: any) => {
     if (!store) return '';
 
+    const feeToPay = store.platformFeeDue > 0 ? store.platformFeeDue : store.settledFeeTotal;
+
     return `Dear ${store.ownerName || 'Restaurant Owner'},
 
 Greetings from BiteShare Technologies!
@@ -389,11 +430,11 @@ Below is your official surplus food sales summary and platform fee billing state
 • Total Orders Processed: ${store.totalOrders} order(s)
 • Gross Sales Volume (GMV): ₹${store.grossGMV.toFixed(2)}
 • Your Net Store Earnings (88%): ₹${store.donorEarnings.toFixed(2)}
-• BiteShare Platform Fee Due (12%): ₹${store.platformFeeDue.toFixed(2)}
+• BiteShare Platform Fee (12%): ₹${feeToPay.toFixed(2)} (${store.platformFeeDue === 0 ? 'PAID ✓' : 'DUE UNPAID'})
 --------------------------------------------------
 
 💳 PAYMENT INSTRUCTIONS:
-Please remit the platform fee amount of ₹${store.platformFeeDue.toFixed(2)} using any of the following details:
+Please remit the platform fee amount of ₹${feeToPay.toFixed(2)} using any of the following details:
 
 1. UPI Payment:
    UPI ID: biteshare@upi
@@ -413,7 +454,6 @@ BiteShare Platform Finance Team
 support@biteshare.in | https://biteshare.in`;
   };
 
-  // Generates Direct Web Gmail Compose URL (100% Reliable across all browsers)
   const getGmailWebComposeUrl = (store: any) => {
     if (!store) return '#';
     const emailTarget = store.email && store.email !== 'N/A' ? store.email : '';
@@ -421,18 +461,6 @@ support@biteshare.in | https://biteshare.in`;
     const body = encodeURIComponent(generateFullInvoiceText(store));
 
     return `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(emailTarget)}&su=${subject}&body=${body}`;
-  };
-
-  // Generates Direct Mailto String for Native Anchor Tag
-  const getNativeMailtoUrl = (store: any) => {
-    if (!store) return '#';
-    const emailTarget = store.email && store.email !== 'N/A' ? store.email : '';
-    const subject = encodeURIComponent(`BiteShare Fee Statement - ${store.restaurantName}`);
-    const conciseBody = encodeURIComponent(
-      `Hi ${store.ownerName},\n\nBiteShare Platform Fee Due (12%): ₹${store.platformFeeDue.toFixed(2)}\n\nPlease remit to UPI: biteshare@upi or Bank A/C: 987654321012 (IFSC: HDFC0001234). Thank you!`
-    );
-
-    return `mailto:${emailTarget}?subject=${subject}&body=${conciseBody}`;
   };
 
   const handleCopyText = (text: string, type: 'INVOICE' | 'EMAIL') => {
@@ -511,6 +539,13 @@ support@biteshare.in | https://biteshare.in`;
             </button>
           </div>
         </div>
+
+        {settlementSuccessMsg && (
+          <div className="p-4 rounded-2xl font-bold text-xs sm:text-sm bg-emerald-50 text-emerald-900 border border-emerald-300 shadow-xs flex items-center gap-2 animate-pulse">
+            <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+            <span>{settlementSuccessMsg}</span>
+          </div>
+        )}
 
         {/* Financial KPI Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -698,7 +733,7 @@ support@biteshare.in | https://biteshare.in`;
                         <th className="py-4 px-6">Item & Store</th>
                         <th className="py-4 px-6">Donor Owner</th>
                         <th className="py-4 px-6">Recipient Customer</th>
-                        <th className="py-4 px-6">Status & PIN</th>
+                        <th className="py-4 px-6">Status & Fee Paid</th>
                         <th className="py-4 px-6 text-right">Gross Total</th>
                         <th className="py-4 px-6 text-right">12% Fee</th>
                         <th className="py-4 px-6 text-right">88% Payout</th>
@@ -765,35 +800,48 @@ support@biteshare.in | https://biteshare.in`;
 
                             <td className="py-4 px-6 whitespace-nowrap">
                               <div className="space-y-1">
-                                <span
-                                  className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider border inline-flex items-center gap-1 ${
-                                    isCompleted
-                                      ? 'bg-emerald-100 text-emerald-800 border-emerald-200'
-                                      : isCancelled
-                                      ? 'bg-slate-100 text-slate-700 border-slate-300'
-                                      : isExpired
-                                      ? 'bg-red-100 text-red-800 border-red-200'
-                                      : 'bg-amber-100 text-amber-900 border-amber-200'
-                                  }`}
-                                >
-                                  {isCompleted ? (
-                                    <>
-                                      <CheckCircle2 className="w-3 h-3 text-emerald-600" /> Completed
-                                    </>
-                                  ) : isCancelled ? (
-                                    <>
-                                      <Ban className="w-3 h-3 text-slate-500" /> Cancelled
-                                    </>
-                                  ) : isExpired ? (
-                                    <>
-                                      <XCircle className="w-3 h-3 text-red-600" /> Expired
-                                    </>
+                                <div className="flex items-center gap-1.5">
+                                  <span
+                                    className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider border inline-flex items-center gap-1 ${
+                                      isCompleted
+                                        ? 'bg-emerald-100 text-emerald-800 border-emerald-200'
+                                        : isCancelled
+                                        ? 'bg-slate-100 text-slate-700 border-slate-300'
+                                        : isExpired
+                                        ? 'bg-red-100 text-red-800 border-red-200'
+                                        : 'bg-amber-100 text-amber-900 border-amber-200'
+                                    }`}
+                                  >
+                                    {isCompleted ? (
+                                      <>
+                                        <CheckCircle2 className="w-3 h-3 text-emerald-600" /> Completed
+                                      </>
+                                    ) : isCancelled ? (
+                                      <>
+                                        <Ban className="w-3 h-3 text-slate-500" /> Cancelled
+                                      </>
+                                    ) : isExpired ? (
+                                      <>
+                                        <XCircle className="w-3 h-3 text-red-600" /> Expired
+                                      </>
+                                    ) : (
+                                      <>
+                                        <Clock className="w-3 h-3 text-amber-600" /> Pending Pickup
+                                      </>
+                                    )}
+                                  </span>
+
+                                  {/* Fee Paid Badge */}
+                                  {claim.isFeePaid ? (
+                                    <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded-md text-[10px] font-black border border-emerald-300">
+                                      FEE PAID ✓
+                                    </span>
                                   ) : (
-                                    <>
-                                      <Clock className="w-3 h-3 text-amber-600" /> Pending Pickup
-                                    </>
+                                    <span className="px-2 py-0.5 bg-amber-50 text-amber-800 rounded-md text-[10px] font-bold border border-amber-200">
+                                      UNPAID
+                                    </span>
                                   )}
-                                </span>
+                                </div>
 
                                 {claim.pickup_pin && (
                                   <div className="text-[10px] font-extrabold text-slate-600 flex items-center gap-1 font-mono">
@@ -859,7 +907,7 @@ support@biteshare.in | https://biteshare.in`;
                     <Store className="w-5 h-5 text-emerald-600" /> Restaurant Earnings & Fee Ledger
                   </h3>
                   <p className="text-xs text-slate-500 mt-0.5">
-                    Itemized platform fees due per restaurant. Click "Send Fee Request" to generate an official payment invoice.
+                    Itemized platform fees due per restaurant. Click "Mark Fee Paid" to clear balance while retaining fee records in green.
                   </p>
                 </div>
               </div>
@@ -880,12 +928,15 @@ support@biteshare.in | https://biteshare.in`;
                         <th className="py-4 px-6 text-center">Orders</th>
                         <th className="py-4 px-6 text-right">Gross GMV</th>
                         <th className="py-4 px-6 text-right">Store Net (88%)</th>
-                        <th className="py-4 px-6 text-right">Fee Due (12%)</th>
-                        <th className="py-4 px-6 text-center">Action</th>
+                        <th className="py-4 px-6 text-right">Fee Status & Amount (12%)</th>
+                        <th className="py-4 px-6 text-center">Billing & Settlement Actions</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 text-xs font-medium text-slate-700">
                       {restaurantLedger.map((store) => {
+                        const hasUnpaidDue = store.platformFeeDue > 0;
+                        const isFullyPaid = store.platformFeeDue === 0 && store.settledFeeTotal > 0;
+
                         return (
                           <tr key={store.donorId || store.restaurantName} className="hover:bg-slate-50/80 transition">
                             <td className="py-4 px-6 whitespace-nowrap">
@@ -927,20 +978,74 @@ support@biteshare.in | https://biteshare.in`;
                               ₹{store.donorEarnings.toFixed(2)}
                             </td>
 
-                            <td className="py-4 px-6 text-right whitespace-nowrap font-black text-emerald-700 bg-emerald-50/50">
-                              ₹{store.platformFeeDue.toFixed(2)}
+                            {/* 🎨 UPDATED FEE DUE COLUMN: Shows exact amount with color coding */}
+                            <td className="py-4 px-6 text-right whitespace-nowrap">
+                              {hasUnpaidDue ? (
+                                <div className="space-y-0.5">
+                                  <div className="font-black text-amber-900 bg-amber-100/90 border border-amber-300 px-3 py-1 rounded-xl inline-block text-xs">
+                                    ₹{store.platformFeeDue.toFixed(2)}
+                                  </div>
+                                  <div className="text-[10px] font-black text-amber-700 uppercase tracking-wider">
+                                    UNPAID FEE DUE
+                                  </div>
+                                  {store.settledFeeTotal > 0 && (
+                                    <div className="text-[10px] text-emerald-700 font-bold">
+                                      (₹{store.settledFeeTotal.toFixed(2)} Paid)
+                                    </div>
+                                  )}
+                                </div>
+                              ) : isFullyPaid ? (
+                                <div className="space-y-0.5">
+                                  <div className="font-black text-emerald-900 bg-emerald-100 border border-emerald-300 px-3 py-1 rounded-xl inline-block text-xs">
+                                    ₹{store.settledFeeTotal.toFixed(2)}
+                                  </div>
+                                  <div className="text-[10px] font-black text-emerald-700 uppercase tracking-wider flex items-center justify-end gap-1">
+                                    <CheckCircle className="w-3 h-3 text-emerald-600" /> PAID
+                                  </div>
+                                </div>
+                              ) : (
+                                <span className="text-slate-400 font-bold">₹0.00</span>
+                              )}
                             </td>
 
-                            {/* Interactive Button opens Fee Payment Modal */}
+                            {/* Action Buttons Column */}
                             <td className="py-4 px-6 text-center whitespace-nowrap">
-                              <button
-                                type="button"
-                                onClick={() => setSelectedStoreForEmail(store)}
-                                className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-[11px] rounded-xl shadow-xs transition"
-                              >
-                                <Send className="w-3.5 h-3.5" />
-                                <span>Send Fee Request</span>
-                              </button>
+                              <div className="flex items-center justify-center gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => setSelectedStoreForEmail(store)}
+                                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-900 text-white font-extrabold text-[11px] rounded-xl transition"
+                                >
+                                  <Send className="w-3 h-3" />
+                                  <span>Invoice</span>
+                                </button>
+
+                                {hasUnpaidDue ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleMarkFeeAsPaid(store)}
+                                    disabled={settlingStoreId === store.donorId}
+                                    className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-[11px] rounded-xl shadow-xs transition disabled:opacity-50"
+                                  >
+                                    {settlingStoreId === store.donorId ? (
+                                      <>
+                                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                                        <span>Settling...</span>
+                                      </>
+                                    ) : (
+                                      <>
+                                        <Check className="w-3.5 h-3.5" />
+                                        <span>Mark Fee Paid</span>
+                                      </>
+                                    )}
+                                  </button>
+                                ) : (
+                                  <span className="inline-flex items-center gap-1 px-3 py-1.5 bg-emerald-100 text-emerald-800 font-extrabold text-[11px] rounded-xl border border-emerald-300">
+                                    <CheckCircle className="w-3.5 h-3.5 text-emerald-600" />
+                                    <span>All Fees Settled</span>
+                                  </span>
+                                )}
+                              </div>
                             </td>
                           </tr>
                         );
@@ -972,7 +1077,6 @@ support@biteshare.in | https://biteshare.in`;
                 <X className="w-5 h-5" />
               </button>
 
-              {/* Modal Header */}
               <div className="space-y-1">
                 <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-emerald-100 text-emerald-800 text-xs font-black uppercase tracking-wider rounded-full border border-emerald-200">
                   <Receipt className="w-3.5 h-3.5 text-emerald-600" /> Platform Fee Billing Invoice
@@ -985,7 +1089,6 @@ support@biteshare.in | https://biteshare.in`;
                 </p>
               </div>
 
-              {/* Financial Summary Card */}
               <div className="bg-slate-50 rounded-2xl p-4 border border-slate-200 space-y-2 text-xs">
                 <div className="flex justify-between text-slate-600 font-medium">
                   <span>Total Orders Processed:</span>
@@ -1000,12 +1103,13 @@ support@biteshare.in | https://biteshare.in`;
                   <span className="font-bold text-slate-900">₹{selectedStoreForEmail.donorEarnings.toFixed(2)}</span>
                 </div>
                 <div className="flex justify-between text-emerald-800 font-extrabold text-sm pt-2 border-t border-slate-200">
-                  <span>BiteShare Fee Due (12%):</span>
-                  <span className="text-base text-emerald-700 font-black">₹{selectedStoreForEmail.platformFeeDue.toFixed(2)}</span>
+                  <span>BiteShare Fee (12%):</span>
+                  <span className="text-base text-emerald-700 font-black">
+                    ₹{(selectedStoreForEmail.platformFeeDue > 0 ? selectedStoreForEmail.platformFeeDue : selectedStoreForEmail.settledFeeTotal).toFixed(2)}
+                  </span>
                 </div>
               </div>
 
-              {/* Full Pre-Formatted Invoice Text Box */}
               <div className="space-y-1.5">
                 <label className="block text-[11px] font-black uppercase tracking-wider text-slate-500">
                   Invoice & Payment Request Message
@@ -1018,10 +1122,8 @@ support@biteshare.in | https://biteshare.in`;
                 />
               </div>
 
-              {/* Action Buttons */}
               <div className="space-y-2 pt-1">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  {/* Button 1: Direct Web Gmail Compose in New Tab (100% Guaranteed) */}
                   <a
                     href={getGmailWebComposeUrl(selectedStoreForEmail)}
                     target="_blank"
@@ -1032,7 +1134,6 @@ support@biteshare.in | https://biteshare.in`;
                     <span>Open in Web Gmail</span>
                   </a>
 
-                  {/* Button 2: Copy Full Invoice Text */}
                   <button
                     type="button"
                     onClick={() =>
@@ -1055,24 +1156,26 @@ support@biteshare.in | https://biteshare.in`;
                 </div>
 
                 <div className="flex items-center justify-between pt-1">
-                  {/* Native mailto link */}
-                  <a
-                    href={getNativeMailtoUrl(selectedStoreForEmail)}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-[11px] font-extrabold text-emerald-700 hover:underline flex items-center gap-1"
-                  >
-                    <Mail className="w-3.5 h-3.5" /> Launch Native Mail App
-                  </a>
+                  {selectedStoreForEmail.platformFeeDue > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        handleMarkFeeAsPaid(selectedStoreForEmail);
+                        setSelectedStoreForEmail(null);
+                      }}
+                      className="text-xs font-extrabold text-emerald-700 hover:underline flex items-center gap-1"
+                    >
+                      <CheckCircle className="w-3.5 h-3.5" /> Direct Mark Fee as Paid (Clear Balance)
+                    </button>
+                  )}
 
-                  {/* Copy Store Email Button */}
                   {selectedStoreForEmail.email && selectedStoreForEmail.email !== 'N/A' && (
                     <button
                       type="button"
                       onClick={() =>
                         handleCopyText(selectedStoreForEmail.email, 'EMAIL')
                       }
-                      className="text-slate-500 hover:text-slate-800 font-bold text-[11px] flex items-center gap-1 transition"
+                      className="text-slate-500 hover:text-slate-800 font-bold text-[11px] flex items-center gap-1 transition ml-auto"
                     >
                       {copiedType === 'EMAIL' ? (
                         <span className="text-emerald-600 font-extrabold">✓ Email Copied</span>
