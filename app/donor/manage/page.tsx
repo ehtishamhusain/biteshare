@@ -17,6 +17,7 @@ import {
   Utensils,
   Clock,
   XCircle,
+  Ban,
 } from 'lucide-react';
 
 export default function DonorManagePickupsPage() {
@@ -33,7 +34,7 @@ export default function DonorManagePickupsPage() {
   useEffect(() => {
     fetchDonorClaims();
 
-    // Real-time synchronization for new pickup orders
+    // Real-time synchronization for pickup status changes
     const channel = supabase
       .channel('donor_claims_sync')
       .on(
@@ -109,25 +110,25 @@ export default function DonorManagePickupsPage() {
     }
 
     const nowTime = new Date().getTime();
-    const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000; // 24 Hours in milliseconds
+    const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;
 
-    // 4. Combine claims, calculate expiration, and filter out cards older than 24 hours
+    // 4. Process statuses and apply 24-hour auto-purge filter
     const processedClaims = claimsData
       .map((claim) => {
         const bundle = bundleMap[claim.bundle_id] || { title: 'Surplus Food Bundle' };
         const recipient = profileMap[claim.recipient_id] || { full_name: 'Community Recipient' };
 
         const isCompleted = claim.status === 'COMPLETED';
-        const pickupDeadline = bundle.pickup_window_end || bundle.expires_at;
+        const isCancelled = claim.status === 'CANCELLED';
 
+        const pickupDeadline = bundle.pickup_window_end || bundle.expires_at;
         const isDeadlinePassed = pickupDeadline
           ? new Date(pickupDeadline).getTime() < nowTime
           : false;
 
-        // Order is EXPIRED if not completed AND deadline has passed (or marked EXPIRED)
-        const isExpired = !isCompleted && (claim.status === 'EXPIRED' || isDeadlinePassed);
+        const isExpired = !isCompleted && !isCancelled && (claim.status === 'EXPIRED' || isDeadlinePassed);
 
-        // Calculate card age from creation time
+        // Calculate card age
         const claimTime = new Date(claim.created_at).getTime();
         const ageMs = nowTime - claimTime;
         const isOlderThan24Hours = ageMs > TWENTY_FOUR_HOURS_MS;
@@ -137,11 +138,12 @@ export default function DonorManagePickupsPage() {
           bundle,
           recipient,
           isCompleted,
+          isCancelled,
           isExpired,
           isOlderThan24Hours,
         };
       })
-      // ⚡ FILTER: Remove cards older than 24 hours from /manage view
+      // ⚡ FILTER: Remove cards older than 24 hours from /donor/manage
       .filter((c) => !c.isOlderThan24Hours);
 
     setClaims(processedClaims);
@@ -217,7 +219,7 @@ export default function DonorManagePickupsPage() {
               Manage Store Pickups
             </h1>
             <p className="text-slate-500 text-xs sm:text-sm mt-1">
-              Verify customer PINs at the counter. Expired uncollected orders are automatically purged after 24 hours.
+              Verify customer PINs at the counter. Cancelled or expired orders automatically purge after 24 hours.
             </p>
           </div>
 
@@ -255,16 +257,18 @@ export default function DonorManagePickupsPage() {
             <Utensils className="w-12 h-12 text-slate-300 mx-auto" />
             <h3 className="text-lg font-bold text-slate-800">No active pickup reservations</h3>
             <p className="text-slate-500 text-xs">
-              When recipients reserve food bundles, their verification tickets appear here in real time and remain active for 24 hours.
+              When recipients reserve food bundles, their verification tickets appear here in real time.
             </p>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {filteredClaims.map((claim) => {
-              const { isCompleted, isExpired } = claim;
+              const { isCompleted, isCancelled, isExpired } = claim;
               const recipientName = claim.recipient?.full_name || claim.recipient?.organization_name || 'Community Recipient';
-              const price = claim.total_price || 0;
-              const storePayout = claim.donor_payout || price * 0.88;
+
+              // Display 0 rupees if cancelled or expired
+              const price = (isCancelled || isExpired) ? 0 : (claim.total_price || 0);
+              const storePayout = (isCancelled || isExpired) ? 0 : (claim.donor_payout || price * 0.88);
 
               return (
                 <div
@@ -272,6 +276,8 @@ export default function DonorManagePickupsPage() {
                   className={`bg-white rounded-3xl p-6 border shadow-xs transition flex flex-col justify-between space-y-4 ${
                     isCompleted
                       ? 'border-emerald-200 bg-emerald-50/30'
+                      : isCancelled
+                      ? 'border-slate-300 bg-slate-50/80 opacity-85'
                       : isExpired
                       ? 'border-red-200 bg-red-50/20'
                       : 'border-slate-200'
@@ -279,11 +285,13 @@ export default function DonorManagePickupsPage() {
                 >
                   <div className="space-y-3">
                     {/* Status & Financial Breakdown */}
-                    <div className="flex items-center justify-between">
+                    <div className="flex items-center justify-between gap-2">
                       <span
                         className={`px-3 py-1 rounded-full text-[11px] font-black uppercase tracking-wider inline-flex items-center gap-1.5 ${
                           isCompleted
                             ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                            : isCancelled
+                            ? 'bg-slate-200 text-slate-800 border border-slate-300'
                             : isExpired
                             ? 'bg-red-100 text-red-800 border border-red-200'
                             : 'bg-amber-100 text-amber-900 border border-amber-200'
@@ -293,6 +301,8 @@ export default function DonorManagePickupsPage() {
                           className={`w-2 h-2 rounded-full ${
                             isCompleted
                               ? 'bg-emerald-600'
+                              : isCancelled
+                              ? 'bg-slate-500'
                               : isExpired
                               ? 'bg-red-500'
                               : 'bg-amber-500 animate-pulse'
@@ -300,6 +310,8 @@ export default function DonorManagePickupsPage() {
                         />
                         {isCompleted
                           ? 'Completed'
+                          : isCancelled
+                          ? 'Cancelled / Rejected at Counter'
                           : isExpired
                           ? 'Expired / Unclaimed'
                           : 'Pending Pickup'}
@@ -307,9 +319,9 @@ export default function DonorManagePickupsPage() {
 
                       <div className="text-right">
                         <span className="text-xs font-black text-slate-900">
-                          {price === 0 ? '🎁 FREE' : `₹${price}`}
+                          {isCancelled || isExpired ? '₹0.00' : price === 0 ? '🎁 FREE' : `₹${price}`}
                         </span>
-                        {price > 0 && (
+                        {!isCancelled && !isExpired && price > 0 && (
                           <span className="block text-[10px] text-emerald-700 font-bold">
                             Net Payout: ₹{Number(storePayout).toFixed(1)}
                           </span>
@@ -361,6 +373,11 @@ export default function DonorManagePickupsPage() {
                       <div className="p-3 bg-emerald-100/60 rounded-2xl text-center text-xs font-bold text-emerald-900 flex items-center justify-center gap-2">
                         <CheckCircle2 className="w-4 h-4 text-emerald-600" />
                         <span>Verified & Handed Over</span>
+                      </div>
+                    ) : isCancelled ? (
+                      <div className="p-3 bg-slate-200/80 rounded-2xl text-center text-xs font-bold text-slate-800 flex items-center justify-center gap-2 border border-slate-300">
+                        <Ban className="w-4 h-4 text-slate-600" />
+                        <span>Cancelled by Recipient at Counter (₹0)</span>
                       </div>
                     ) : isExpired ? (
                       <div className="p-3 bg-red-100/60 rounded-2xl text-center text-xs font-bold text-red-900 flex items-center justify-center gap-2">
