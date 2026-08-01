@@ -1,247 +1,1092 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
+import Link from 'next/link';
+import { motion, AnimatePresence } from 'framer-motion';
 import { supabase } from '@/lib/supabase';
-import { motion } from 'framer-motion';
 import {
-  IndianRupee,
-  Building,
-  TrendingUp,
-  Percent,
-  RefreshCw,
-  Search,
+  ShieldAlert,
   Download,
+  Search,
+  Filter,
+  RefreshCw,
+  IndianRupee,
+  TrendingUp,
+  Building,
+  User,
+  Phone,
   CheckCircle2,
-  FileText,
+  XCircle,
+  Clock,
+  Ban,
+  KeyRound,
+  ShoppingBag,
+  ArrowLeft,
+  PieChart,
+  FileSpreadsheet,
+  Mail,
+  Receipt,
+  Store,
+  Send,
+  Copy,
+  Check,
+  X,
+  ExternalLink,
 } from 'lucide-react';
 
 export default function AdminFinancePage() {
+  const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
   const [loading, setLoading] = useState(true);
-  const [restaurantLedger, setRestaurantLedger] = useState<any[]>([]);
+  const [claims, setClaims] = useState<any[]>([]);
+
+  // Navigation Tab State
+  const [activeTab, setActiveTab] = useState<'TRANSACTIONS' | 'RESTAURANTS'>('TRANSACTIONS');
+
+  // Search & Filter States
   const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'ALL' | 'COMPLETED' | 'PENDING' | 'CANCELLED' | 'EXPIRED'>('ALL');
+  const [dateFilter, setDateFilter] = useState<'ALL' | 'TODAY' | 'WEEK' | 'MONTH'>('ALL');
 
-  useEffect(() => {
-    fetchAdminFinanceData();
-  }, []);
+  // Fee Request Modal & Copy States
+  const [selectedStoreForEmail, setSelectedStoreForEmail] = useState<any | null>(null);
+  const [copiedType, setCopiedType] = useState<'INVOICE' | 'EMAIL' | null>(null);
 
-  const fetchAdminFinanceData = async () => {
+  // Verify Admin Security & Load All Claims
+  const checkAdminAndFetchData = async () => {
     setLoading(true);
 
-    // Fetch aggregated data from our Supabase view
-    const { data, error } = await supabase
-      .from('admin_restaurant_fees')
-      .select('*');
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
 
-    if (!error && data) {
-      setRestaurantLedger(data);
-    } else {
-      console.error('Error fetching admin finance view:', error);
+    if (!user) {
+      setIsAdmin(false);
+      setLoading(false);
+      return;
     }
 
+    // 1. Verify User Profile Role in Supabase
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', user.id)
+      .maybeSingle();
+
+    if (!profile || profile.role !== 'ADMIN') {
+      setIsAdmin(false);
+      setLoading(false);
+      return;
+    }
+
+    setIsAdmin(true);
+
+    // 2. Fetch All Claims from Supabase
+    const { data: rawClaims, error: claimsErr } = await supabase
+      .from('claims')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (claimsErr || !rawClaims) {
+      setClaims([]);
+      setLoading(false);
+      return;
+    }
+
+    // 3. Fetch all associated food bundles
+    const bundleIds = Array.from(new Set(rawClaims.map((c) => c.bundle_id).filter(Boolean)));
+    let bundleMap = new Map();
+
+    if (bundleIds.length > 0) {
+      const { data: bundlesData } = await supabase
+        .from('food_bundles')
+        .select('*')
+        .in('id', bundleIds);
+
+      if (bundlesData) {
+        bundlesData.forEach((b) => bundleMap.set(b.id, b));
+      }
+    }
+
+    // 4. Fetch all associated profiles (Recipients and Donors)
+    const recipientIds = rawClaims.map((c) => c.recipient_id).filter(Boolean);
+    const donorIds = Array.from(
+      new Set(Array.from(bundleMap.values()).map((b) => b.donor_id).filter(Boolean))
+    );
+    const allProfileIds = Array.from(new Set([...recipientIds, ...donorIds]));
+
+    let profileMap = new Map();
+    if (allProfileIds.length > 0) {
+      const { data: profilesData } = await supabase
+        .from('profiles')
+        .select('id, full_name, organization_name, phone, email, role')
+        .in('id', allProfileIds);
+
+      if (profilesData) {
+        profilesData.forEach((p) => profileMap.set(p.id, p));
+      }
+    }
+
+    // 5. Combine and resolve full entity details
+    const processedClaims = rawClaims.map((claim) => {
+      const bundle = bundleMap.get(claim.bundle_id) || {};
+      const recipient = profileMap.get(claim.recipient_id) || {};
+      const donorProfile = profileMap.get(bundle.donor_id) || {};
+
+      const restaurantName =
+        bundle.restaurant_name ||
+        donorProfile.organization_name ||
+        donorProfile.full_name ||
+        'Partner Restaurant';
+
+      const donorOwnerName = donorProfile.full_name || donorProfile.organization_name || 'Verified Owner';
+      const donorEmail = donorProfile.email || 'N/A';
+      const donorPhone = donorProfile.phone || 'N/A';
+      const donorId = bundle.donor_id || donorProfile.id || 'partner-store';
+
+      const recipientName =
+        claim.recipient_name ||
+        recipient.full_name ||
+        recipient.organization_name ||
+        'Community Recipient';
+
+      const isCancelledOrExpired = claim.status === 'CANCELLED' || claim.status === 'EXPIRED';
+
+      return {
+        ...claim,
+        bundle,
+        recipient,
+        donorProfile,
+        donorId,
+        restaurantName,
+        donorOwnerName,
+        donorEmail,
+        donorPhone,
+        recipientName,
+        recipientPhone: recipient.phone || 'N/A',
+        recipientEmail: recipient.email || 'N/A',
+        totalPrice: isCancelledOrExpired ? 0 : Number(claim.total_price || 0),
+        platformFee: isCancelledOrExpired ? 0 : Number(claim.platform_fee || 0),
+        donorPayout: isCancelledOrExpired ? 0 : Number(claim.donor_payout || 0),
+      };
+    });
+
+    setClaims(processedClaims);
     setLoading(false);
   };
 
-  // 📊 CALCULATE GLOBAL PLATFORM METRICS
-  const totalGrossGMV = restaurantLedger.reduce(
-    (sum, r) => sum + (Number(r.total_gross_sales) || 0),
-    0
-  );
-  const totalBiteShareCut = totalGrossGMV * 0.12; // 12% platform fee
-  const totalRestaurantPayouts = totalGrossGMV * 0.88; // 88% net to stores
-  const totalOrdersCount = restaurantLedger.reduce(
-    (sum, r) => sum + (Number(r.total_completed_pickups) || 0),
-    0
-  );
+  useEffect(() => {
+    checkAdminAndFetchData();
 
-  // Filtered by search query
-  const filteredLedger = restaurantLedger.filter((r) =>
-    String(r.restaurant_name).toLowerCase().includes(searchQuery.toLowerCase()) ||
-    String(r.city).toLowerCase().includes(searchQuery.toLowerCase())
-  );
+    // Subscribe to realtime updates
+    const channel = supabase
+      .channel('admin_finance_sync')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'claims' }, () => checkAdminAndFetchData())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'food_bundles' }, () => checkAdminAndFetchData())
+      .subscribe();
 
-  // CSV Export Handler
-  const exportToCSV = () => {
-    const headers = ['Restaurant Name', 'City', 'UPI ID', 'Completed Orders', 'Gross Sales (INR)', 'BiteShare Fee 12% (INR)', 'Store Payout 88% (INR)'];
-    const rows = filteredLedger.map((r) => [
-      `"${r.restaurant_name}"`,
-      `"${r.city || ''}"`,
-      `"${r.store_upi_id || 'Not Set'}"`,
-      r.total_completed_pickups,
-      r.total_gross_sales,
-      r.biteshare_12_pct_fee,
-      r.restaurant_88_pct_payout,
-    ]);
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
 
-    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map((e) => e.join(','))].join('\n');
-    const encodedUri = encodeURI(csvContent);
+  // Filtered Transaction Claims
+  const filteredClaims = useMemo(() => {
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    const weekStart = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).getTime();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+
+    return claims.filter((c) => {
+      if (statusFilter !== 'ALL' && c.status !== statusFilter) {
+        return false;
+      }
+
+      const claimTime = new Date(c.created_at).getTime();
+      if (dateFilter === 'TODAY' && claimTime < todayStart) return false;
+      if (dateFilter === 'WEEK' && claimTime < weekStart) return false;
+      if (dateFilter === 'MONTH' && claimTime < monthStart) return false;
+
+      const q = searchQuery.trim().toLowerCase();
+      if (q === '') return true;
+
+      const title = (c.bundle?.title || '').toLowerCase();
+      const resName = (c.restaurantName || '').toLowerCase();
+      const ownerName = (c.donorOwnerName || '').toLowerCase();
+      const recName = (c.recipientName || '').toLowerCase();
+      const recPhone = (c.recipientPhone || '').toLowerCase();
+      const pin = (c.pickup_pin || '').toLowerCase();
+      const claimId = (c.id || '').toLowerCase();
+
+      return (
+        title.includes(q) ||
+        resName.includes(q) ||
+        ownerName.includes(q) ||
+        recName.includes(q) ||
+        recPhone.includes(q) ||
+        pin.includes(q) ||
+        claimId.includes(q)
+      );
+    });
+  }, [claims, searchQuery, statusFilter, dateFilter]);
+
+  // Grouped Restaurant Earnings & Platform Fee Summary
+  const restaurantLedger = useMemo(() => {
+    const map = new Map<string, any>();
+
+    filteredClaims.forEach((c) => {
+      const key = c.donorId || c.restaurantName;
+
+      if (!map.has(key)) {
+        map.set(key, {
+          donorId: c.donorId,
+          restaurantName: c.restaurantName,
+          ownerName: c.donorOwnerName,
+          email: c.donorEmail,
+          phone: c.donorPhone,
+          totalOrders: 0,
+          completedOrders: 0,
+          grossGMV: 0,
+          donorEarnings: 0,
+          platformFeeDue: 0,
+        });
+      }
+
+      const store = map.get(key);
+      store.totalOrders += 1;
+
+      if (c.status === 'COMPLETED' || c.status === 'PENDING') {
+        store.grossGMV += c.totalPrice;
+        store.donorEarnings += c.donorPayout;
+        store.platformFeeDue += c.platformFee;
+      }
+
+      if (c.status === 'COMPLETED') {
+        store.completedOrders += 1;
+      }
+    });
+
+    return Array.from(map.values()).sort((a, b) => b.platformFeeDue - a.platformFeeDue);
+  }, [filteredClaims]);
+
+  // Financial Metrics Calculations
+  const metrics = useMemo(() => {
+    let grossGMV = 0;
+    let totalPlatformFees = 0;
+    let totalDonorPayouts = 0;
+    let completedCount = 0;
+    let pendingCount = 0;
+    let cancelledCount = 0;
+    let expiredCount = 0;
+
+    filteredClaims.forEach((c) => {
+      if (c.status === 'COMPLETED' || c.status === 'PENDING') {
+        grossGMV += c.totalPrice;
+        totalPlatformFees += c.platformFee;
+        totalDonorPayouts += c.donorPayout;
+      }
+
+      if (c.status === 'COMPLETED') completedCount++;
+      if (c.status === 'PENDING') pendingCount++;
+      if (c.status === 'CANCELLED') cancelledCount++;
+      if (c.status === 'EXPIRED') expiredCount++;
+    });
+
+    const totalClaims = filteredClaims.length;
+    const conversionRate = totalClaims > 0 ? Math.round((completedCount / totalClaims) * 100) : 0;
+
+    return {
+      grossGMV,
+      totalPlatformFees,
+      totalDonorPayouts,
+      completedCount,
+      pendingCount,
+      cancelledCount,
+      expiredCount,
+      totalClaims,
+      conversionRate,
+    };
+  }, [filteredClaims]);
+
+  // Universal CSV Cell Escaper
+  const escapeCSV = (val: any): string => {
+    if (val === null || val === undefined) return '""';
+    const str = String(val).replace(/"/g, '""');
+    return `"${str}"`;
+  };
+
+  // Export CSV Handler
+  const handleExportCSV = () => {
+    if (filteredClaims.length === 0) return;
+
+    const headers = [
+      'Order ID',
+      'Created Date',
+      'Created Time',
+      'Food Bundle Title',
+      'Restaurant Name',
+      'Donor Owner Name',
+      'Recipient Name',
+      'Recipient Phone',
+      'Claimed Quantity',
+      'Claim Status',
+      'Gross Total (INR)',
+      'BiteShare Fee 12% (INR)',
+      'Donor Payout 88% (INR)',
+      'Counter Pickup PIN',
+    ];
+
+    const csvRows = filteredClaims.map((c) => {
+      const claimDate = new Date(c.created_at);
+      const dateStr = claimDate.toISOString().slice(0, 10);
+      const timeStr = claimDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true });
+
+      return [
+        c.id,
+        dateStr,
+        timeStr,
+        c.bundle?.title || 'Food Item',
+        c.restaurantName || 'Restaurant',
+        c.donorOwnerName || 'N/A',
+        c.recipientName || 'Recipient',
+        c.recipientPhone || 'N/A',
+        c.claimed_quantity || 1,
+        c.status || 'PENDING',
+        c.totalPrice.toFixed(2),
+        c.platformFee.toFixed(2),
+        c.donorPayout.toFixed(2),
+        c.pickup_pin || 'N/A',
+      ].map(escapeCSV);
+    });
+
+    const csvContent =
+      '\uFEFF' +
+      [headers.map(escapeCSV).join(','), ...csvRows.map((r) => r.join(','))].join('\r\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `BiteShare_Commission_Report_${new Date().toISOString().slice(0, 10)}.csv`);
+    link.setAttribute('href', url);
+    link.setAttribute('download', `biteshare_financial_audit_${new Date().toISOString().slice(0, 10)}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
   };
 
+  // Generates Full Itemized Invoice Text for Clipboard Copy
+  const generateFullInvoiceText = (store: any) => {
+    if (!store) return '';
+
+    return `Dear ${store.ownerName || 'Restaurant Owner'},
+
+Greetings from BiteShare Technologies!
+
+Below is your official surplus food sales summary and platform fee billing statement for ${store.restaurantName}:
+
+--------------------------------------------------
+📊 REVENUE & FEE STATEMENT
+--------------------------------------------------
+• Restaurant: ${store.restaurantName}
+• Total Orders Processed: ${store.totalOrders} order(s)
+• Gross Sales Volume (GMV): ₹${store.grossGMV.toFixed(2)}
+• Your Net Store Earnings (88%): ₹${store.donorEarnings.toFixed(2)}
+• BiteShare Platform Fee Due (12%): ₹${store.platformFeeDue.toFixed(2)}
+--------------------------------------------------
+
+💳 PAYMENT INSTRUCTIONS:
+Please remit the platform fee amount of ₹${store.platformFeeDue.toFixed(2)} using any of the following details:
+
+1. UPI Payment:
+   UPI ID: biteshare@upi
+
+2. Bank Transfer:
+   Account Name: BiteShare Technologies Pvt Ltd
+   Account Number: 987654321012
+   IFSC Code: HDFC0001234
+   Bank: HDFC Bank, Bareilly Branch
+
+After completing the payment, please reply with the payment screenshot or Transaction Ref ID for instant account reconciliation.
+
+Thank you for partnering with BiteShare to eliminate food waste!
+
+Best regards,
+BiteShare Platform Finance Team
+support@biteshare.in | https://biteshare.in`;
+  };
+
+  // Generates Direct Web Gmail Compose URL (100% Reliable across all browsers)
+  const getGmailWebComposeUrl = (store: any) => {
+    if (!store) return '#';
+    const emailTarget = store.email && store.email !== 'N/A' ? store.email : '';
+    const subject = encodeURIComponent(`BiteShare Platform Fee Statement - ${store.restaurantName}`);
+    const body = encodeURIComponent(generateFullInvoiceText(store));
+
+    return `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(emailTarget)}&su=${subject}&body=${body}`;
+  };
+
+  // Generates Direct Mailto String for Native Anchor Tag
+  const getNativeMailtoUrl = (store: any) => {
+    if (!store) return '#';
+    const emailTarget = store.email && store.email !== 'N/A' ? store.email : '';
+    const subject = encodeURIComponent(`BiteShare Fee Statement - ${store.restaurantName}`);
+    const conciseBody = encodeURIComponent(
+      `Hi ${store.ownerName},\n\nBiteShare Platform Fee Due (12%): ₹${store.platformFeeDue.toFixed(2)}\n\nPlease remit to UPI: biteshare@upi or Bank A/C: 987654321012 (IFSC: HDFC0001234). Thank you!`
+    );
+
+    return `mailto:${emailTarget}?subject=${subject}&body=${conciseBody}`;
+  };
+
+  const handleCopyText = (text: string, type: 'INVOICE' | 'EMAIL') => {
+    navigator.clipboard.writeText(text);
+    setCopiedType(type);
+    setTimeout(() => setCopiedType(null), 2500);
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center font-sans">
+        <div className="text-center space-y-3">
+          <RefreshCw className="w-8 h-8 animate-spin text-emerald-600 mx-auto" />
+          <p className="text-slate-500 text-sm font-semibold">Loading Admin Financial Audit Logs...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (isAdmin === false) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4 font-sans">
+        <div className="bg-white rounded-3xl p-8 max-w-md w-full border border-slate-200 shadow-xl text-center space-y-5">
+          <div className="w-16 h-16 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto border border-red-200">
+            <ShieldAlert className="w-8 h-8" />
+          </div>
+          <div className="space-y-1.5">
+            <h1 className="text-2xl font-black text-slate-900">Access Restricted</h1>
+            <p className="text-slate-600 text-xs sm:text-sm leading-relaxed">
+              This financial ledger is restricted to BiteShare Platform Administrators.
+            </p>
+          </div>
+          <Link
+            href="/feed"
+            className="inline-flex items-center justify-center gap-2 w-full py-3 bg-slate-900 hover:bg-slate-800 text-white font-extrabold text-xs rounded-2xl transition"
+          >
+            <ArrowLeft className="w-4 h-4" /> Return to Marketplace Feed
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="min-h-screen bg-slate-50 py-10 px-4 sm:px-6 lg:px-8 font-sans">
+    <div className="min-h-screen bg-slate-50 py-8 px-4 sm:px-6 lg:px-8 font-sans">
       <div className="max-w-7xl mx-auto space-y-8">
         
-        {/* Header */}
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-6 sm:p-8 rounded-3xl border border-slate-200 shadow-xs">
-          <div>
-            <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-emerald-100 text-emerald-800 text-xs font-black uppercase tracking-wider border border-emerald-200 mb-2">
-              <Percent className="w-4 h-4 text-emerald-600" /> Executive Admin Portal
+        {/* Admin Header */}
+        <div className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-200 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="space-y-1">
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-emerald-100 text-emerald-800 text-xs font-black uppercase tracking-wider rounded-full border border-emerald-200 mb-1">
+              <PieChart className="w-3.5 h-3.5 text-emerald-600" /> Admin Financial Control & Audit
             </div>
-            <h1 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
-              BiteShare Platform Commission & Settlement Engine
+            <h1 className="text-2xl sm:text-4xl font-black text-slate-900 tracking-tight">
+              BiteShare Financial Ledger
             </h1>
-            <p className="text-slate-600 text-xs sm:text-sm mt-1">
-              Live automated financial calculations across all 100+ partner restaurants.
+            <p className="text-slate-500 text-xs sm:text-sm">
+              Live audit of all reservations, platform commission breakdown (12%), and store payouts (88%).
             </p>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 shrink-0">
             <button
-              onClick={exportToCSV}
-              disabled={filteredLedger.length === 0}
-              className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-xl shadow-md transition flex items-center gap-2 disabled:opacity-50"
+              onClick={checkAdminAndFetchData}
+              className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-2xl transition flex items-center gap-2"
             >
-              <Download className="w-4 h-4" />
-              <span>Export CSV Report</span>
+              <RefreshCw className="w-4 h-4 text-emerald-600" /> Refresh Data
             </button>
 
             <button
-              onClick={fetchAdminFinanceData}
-              className="p-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl transition"
+              onClick={handleExportCSV}
+              disabled={filteredClaims.length === 0}
+              className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-2xl transition shadow-md flex items-center gap-2 disabled:opacity-50"
             >
-              <RefreshCw className={`w-4 h-4 text-emerald-600 ${loading ? 'animate-spin' : ''}`} />
+              <Download className="w-4 h-4" /> Export CSV Audit
             </button>
           </div>
         </div>
 
-        {/* Global Financial Metric Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-          {/* Your Total 12% Revenue */}
-          <div className="bg-emerald-600 text-white p-6 rounded-3xl shadow-lg shadow-emerald-600/20 space-y-2">
+        {/* Financial KPI Cards */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="bg-gradient-to-br from-emerald-600 to-teal-700 rounded-3xl p-6 text-white shadow-lg space-y-2 relative overflow-hidden">
             <div className="flex items-center justify-between text-emerald-100 text-xs font-bold uppercase tracking-wider">
-              <span>BiteShare Profit (12%)</span>
-              <div className="p-2 rounded-xl bg-emerald-500/30 text-white border border-emerald-400/30">
-                <Percent className="w-4 h-4" />
-              </div>
+              <span>BiteShare Revenue (12%)</span>
+              <TrendingUp className="w-5 h-5 text-emerald-200" />
             </div>
-            <div className="text-3xl font-black text-white">₹{totalBiteShareCut.toFixed(0)}</div>
-            <p className="text-[11px] text-emerald-100 font-medium">Your platform revenue across all stores</p>
+            <div className="text-3xl font-black tracking-tight">
+              ₹{metrics.totalPlatformFees.toFixed(2)}
+            </div>
+            <p className="text-[11px] text-emerald-100 font-medium pt-1 border-t border-white/10">
+              Net platform commission collected
+            </p>
           </div>
 
-          {/* Gross Market Volume */}
-          <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-xs space-y-2">
+          <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-xs space-y-2">
             <div className="flex items-center justify-between text-slate-500 text-xs font-bold uppercase tracking-wider">
-              <span>Total Food GMV</span>
-              <div className="p-2 rounded-xl bg-slate-100 text-slate-700">
-                <IndianRupee className="w-4 h-4" />
-              </div>
+              <span>Gross Order GMV</span>
+              <IndianRupee className="w-5 h-5 text-blue-600" />
             </div>
-            <div className="text-3xl font-black text-slate-900">₹{totalGrossGMV.toFixed(0)}</div>
-            <p className="text-[11px] text-slate-500">Gross transaction value processed</p>
+            <div className="text-3xl font-black text-slate-900 tracking-tight">
+              ₹{metrics.grossGMV.toFixed(2)}
+            </div>
+            <p className="text-[11px] text-slate-500 font-medium pt-1 border-t border-slate-100">
+              Total transaction value processed
+            </p>
           </div>
 
-          {/* Total Store Settlements */}
-          <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-xs space-y-2">
+          <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-xs space-y-2">
             <div className="flex items-center justify-between text-slate-500 text-xs font-bold uppercase tracking-wider">
-              <span>Total Partner Payouts (88%)</span>
-              <div className="p-2 rounded-xl bg-amber-50 text-amber-700 border border-amber-200">
-                <TrendingUp className="w-4 h-4" />
-              </div>
+              <span>Store Payouts (88%)</span>
+              <Building className="w-5 h-5 text-purple-600" />
             </div>
-            <div className="text-3xl font-black text-slate-900">₹{totalRestaurantPayouts.toFixed(0)}</div>
-            <p className="text-[11px] text-slate-500">Owed to partner restaurants</p>
+            <div className="text-3xl font-black text-slate-900 tracking-tight">
+              ₹{metrics.totalDonorPayouts.toFixed(2)}
+            </div>
+            <p className="text-[11px] text-slate-500 font-medium pt-1 border-t border-slate-100">
+              Allocated to partner restaurants
+            </p>
           </div>
 
-          {/* Partner Count */}
-          <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-xs space-y-2">
+          <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-xs space-y-2">
             <div className="flex items-center justify-between text-slate-500 text-xs font-bold uppercase tracking-wider">
-              <span>Active Partners</span>
-              <div className="p-2 rounded-xl bg-teal-50 text-teal-700">
-                <Building className="w-4 h-4" />
-              </div>
+              <span>Fulfillment Rate</span>
+              <ShoppingBag className="w-5 h-5 text-amber-600" />
             </div>
-            <div className="text-3xl font-black text-slate-900">{restaurantLedger.length} Stores</div>
-            <p className="text-[11px] text-emerald-700 font-bold">{totalOrdersCount} Completed Orders</p>
+            <div className="text-3xl font-black text-slate-900 tracking-tight flex items-baseline gap-2">
+              <span>{metrics.completedCount}</span>
+              <span className="text-xs font-bold text-slate-400">/ {metrics.totalClaims} orders</span>
+            </div>
+            <p className="text-[11px] text-slate-500 font-medium pt-1 border-t border-slate-100">
+              {metrics.conversionRate}% completion success rate
+            </p>
           </div>
         </div>
 
-        {/* Restaurant Breakdown Table */}
-        <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-xs space-y-4">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">
-            <div className="flex items-center gap-2">
-              <FileText className="w-5 h-5 text-emerald-600" />
-              <h2 className="text-lg font-black text-slate-900">All Restaurant Fee & Settlement Ledger</h2>
+        {/* VIEW SWITCHER TABS */}
+        <div className="flex items-center gap-2 p-1.5 bg-slate-200/80 rounded-2xl border border-slate-300 w-full sm:w-auto self-start">
+          <button
+            onClick={() => setActiveTab('TRANSACTIONS')}
+            className={`px-5 py-2.5 rounded-xl text-xs font-extrabold transition flex items-center gap-2 ${
+              activeTab === 'TRANSACTIONS'
+                ? 'bg-white text-slate-900 shadow-sm'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <Receipt className="w-4 h-4 text-emerald-600" />
+            <span>Order Audit Log</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('RESTAURANTS')}
+            className={`px-5 py-2.5 rounded-xl text-xs font-extrabold transition flex items-center gap-2 ${
+              activeTab === 'RESTAURANTS'
+                ? 'bg-white text-slate-900 shadow-sm'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <Store className="w-4 h-4 text-emerald-600" />
+            <span>Restaurant Fee Ledger & Billing ({restaurantLedger.length})</span>
+          </button>
+        </div>
+
+        {/* TAB 1: ALL TRANSACTIONS TABLE */}
+        {activeTab === 'TRANSACTIONS' && (
+          <div className="space-y-4">
+            <div className="bg-white p-4 rounded-3xl border border-slate-200 shadow-xs space-y-4">
+              <div className="flex flex-col md:flex-row items-center justify-between gap-4">
+                <div className="relative w-full md:w-96">
+                  <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Search restaurant, donor owner, recipient, PIN, item..."
+                    className="w-full pl-10 pr-4 py-2.5 rounded-2xl border border-slate-200 focus:ring-2 focus:ring-emerald-500 outline-none text-xs text-slate-800 bg-slate-50/50"
+                  />
+                  {searchQuery && (
+                    <button
+                      onClick={() => setSearchQuery('')}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600"
+                    >
+                      <XCircle className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-1.5 p-1 bg-slate-100 rounded-2xl border border-slate-200 w-full md:w-auto overflow-x-auto">
+                  <button
+                    onClick={() => setDateFilter('ALL')}
+                    className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition whitespace-nowrap ${
+                      dateFilter === 'ALL' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    All Time
+                  </button>
+                  <button
+                    onClick={() => setDateFilter('TODAY')}
+                    className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition whitespace-nowrap ${
+                      dateFilter === 'TODAY' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    Today
+                  </button>
+                  <button
+                    onClick={() => setDateFilter('WEEK')}
+                    className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition whitespace-nowrap ${
+                      dateFilter === 'WEEK' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    This Week
+                  </button>
+                  <button
+                    onClick={() => setDateFilter('MONTH')}
+                    className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition whitespace-nowrap ${
+                      dateFilter === 'MONTH' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    This Month
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none pt-2 border-t border-slate-100">
+                <Filter className="w-3.5 h-3.5 text-slate-400 shrink-0 mr-1" />
+                {[
+                  { id: 'ALL', label: 'All Statuses', count: claims.length },
+                  { id: 'COMPLETED', label: 'Completed', count: metrics.completedCount },
+                  { id: 'PENDING', label: 'Pending Pickup', count: metrics.pendingCount },
+                  { id: 'CANCELLED', label: 'Cancelled at Counter', count: metrics.cancelledCount },
+                  { id: 'EXPIRED', label: 'Expired / Unclaimed', count: metrics.expiredCount },
+                ].map((f) => (
+                  <button
+                    key={f.id}
+                    onClick={() => setStatusFilter(f.id as any)}
+                    className={`px-3.5 py-1.5 rounded-xl text-xs font-extrabold whitespace-nowrap transition border ${
+                      statusFilter === f.id
+                        ? 'bg-slate-900 text-white border-slate-900 shadow-xs'
+                        : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                    }`}
+                  >
+                    {f.label} ({f.count})
+                  </button>
+                ))}
+              </div>
             </div>
 
-            {/* Search Input */}
-            <div className="relative w-full sm:w-64">
-              <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search restaurant or city..."
-                className="w-full pl-9 pr-4 py-2 rounded-xl border border-slate-200 text-xs font-bold text-slate-800 bg-slate-50/50 outline-none focus:ring-2 focus:ring-emerald-500"
-              />
+            {/* Data Table */}
+            <div className="bg-white rounded-3xl border border-slate-200 shadow-xs overflow-hidden">
+              {filteredClaims.length === 0 ? (
+                <div className="p-12 text-center space-y-3">
+                  <FileSpreadsheet className="w-12 h-12 text-slate-300 mx-auto" />
+                  <h3 className="text-lg font-bold text-slate-800">No financial records found</h3>
+                  <p className="text-slate-500 text-xs">
+                    Try resetting your search query or selecting a different status filter.
+                  </p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="bg-slate-50/80 border-b border-slate-200 text-[11px] font-black uppercase tracking-wider text-slate-500">
+                        <th className="py-4 px-6">Date & Time</th>
+                        <th className="py-4 px-6">Item & Store</th>
+                        <th className="py-4 px-6">Donor Owner</th>
+                        <th className="py-4 px-6">Recipient Customer</th>
+                        <th className="py-4 px-6">Status & PIN</th>
+                        <th className="py-4 px-6 text-right">Gross Total</th>
+                        <th className="py-4 px-6 text-right">12% Fee</th>
+                        <th className="py-4 px-6 text-right">88% Payout</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 text-xs font-medium text-slate-700">
+                      {filteredClaims.map((claim) => {
+                        const isCompleted = claim.status === 'COMPLETED';
+                        const isCancelled = claim.status === 'CANCELLED';
+                        const isExpired = claim.status === 'EXPIRED';
+
+                        return (
+                          <tr key={claim.id} className="hover:bg-slate-50/80 transition duration-150">
+                            <td className="py-4 px-6 whitespace-nowrap">
+                              <div className="font-bold text-slate-900">
+                                {new Date(claim.created_at).toLocaleDateString([], {
+                                  month: 'short',
+                                  day: 'numeric',
+                                  year: 'numeric',
+                                })}
+                              </div>
+                              <div className="text-[11px] text-slate-400">
+                                {new Date(claim.created_at).toLocaleTimeString([], {
+                                  hour: '2-digit',
+                                  minute: '2-digit',
+                                  hour12: true,
+                                })}
+                              </div>
+                            </td>
+
+                            <td className="py-4 px-6 max-w-xs">
+                              <div className="font-black text-slate-900 line-clamp-1">
+                                {claim.bundle?.title || 'Surplus Food Bundle'}
+                              </div>
+                              <div className="text-[11px] font-bold text-emerald-700 flex items-center gap-1 mt-0.5">
+                                <Building className="w-3 h-3 shrink-0" />
+                                <span className="line-clamp-1">{claim.restaurantName}</span>
+                              </div>
+                              <div className="text-[10px] text-slate-400 font-semibold">
+                                Qty: {claim.claimed_quantity || 1} item(s)
+                              </div>
+                            </td>
+
+                            <td className="py-4 px-6 whitespace-nowrap">
+                              <div className="font-bold text-slate-800 flex items-center gap-1.5">
+                                <User className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                                <span>{claim.donorOwnerName}</span>
+                              </div>
+                              <div className="text-[10px] text-slate-400">
+                                {claim.donorPhone}
+                              </div>
+                            </td>
+
+                            <td className="py-4 px-6 whitespace-nowrap">
+                              <div className="font-bold text-slate-900 flex items-center gap-1.5">
+                                <User className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                                <span>{claim.recipientName}</span>
+                              </div>
+                              <div className="text-[11px] text-slate-500 flex items-center gap-1 mt-0.5">
+                                <Phone className="w-3 h-3 text-slate-400 shrink-0" />
+                                <span>{claim.recipientPhone}</span>
+                              </div>
+                            </td>
+
+                            <td className="py-4 px-6 whitespace-nowrap">
+                              <div className="space-y-1">
+                                <span
+                                  className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider border inline-flex items-center gap-1 ${
+                                    isCompleted
+                                      ? 'bg-emerald-100 text-emerald-800 border-emerald-200'
+                                      : isCancelled
+                                      ? 'bg-slate-100 text-slate-700 border-slate-300'
+                                      : isExpired
+                                      ? 'bg-red-100 text-red-800 border-red-200'
+                                      : 'bg-amber-100 text-amber-900 border-amber-200'
+                                  }`}
+                                >
+                                  {isCompleted ? (
+                                    <>
+                                      <CheckCircle2 className="w-3 h-3 text-emerald-600" /> Completed
+                                    </>
+                                  ) : isCancelled ? (
+                                    <>
+                                      <Ban className="w-3 h-3 text-slate-500" /> Cancelled
+                                    </>
+                                  ) : isExpired ? (
+                                    <>
+                                      <XCircle className="w-3 h-3 text-red-600" /> Expired
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Clock className="w-3 h-3 text-amber-600" /> Pending Pickup
+                                    </>
+                                  )}
+                                </span>
+
+                                {claim.pickup_pin && (
+                                  <div className="text-[10px] font-extrabold text-slate-600 flex items-center gap-1 font-mono">
+                                    <KeyRound className="w-3 h-3 text-emerald-600 shrink-0" />
+                                    <span>PIN: {claim.pickup_pin}</span>
+                                  </div>
+                                )}
+                              </div>
+                            </td>
+
+                            <td className="py-4 px-6 text-right whitespace-nowrap font-black text-slate-900">
+                              {isCancelled || isExpired ? (
+                                <span className="text-slate-400">₹0.00</span>
+                              ) : (
+                                `₹${claim.totalPrice.toFixed(2)}`
+                              )}
+                            </td>
+
+                            <td className="py-4 px-6 text-right whitespace-nowrap font-black text-emerald-700 bg-emerald-50/40">
+                              {isCancelled || isExpired ? (
+                                <span className="text-slate-400">₹0.00</span>
+                              ) : (
+                                `₹${claim.platformFee.toFixed(2)}`
+                              )}
+                            </td>
+
+                            <td className="py-4 px-6 text-right whitespace-nowrap font-black text-slate-800">
+                              {isCancelled || isExpired ? (
+                                <span className="text-slate-400">₹0.00</span>
+                              ) : (
+                                `₹${claim.donorPayout.toFixed(2)}`
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              <div className="p-4 bg-slate-50 border-t border-slate-200 text-xs text-slate-500 flex flex-col sm:flex-row justify-between items-center gap-2">
+                <div>
+                  Showing <strong>{filteredClaims.length}</strong> of <strong>{claims.length}</strong> total claim records
+                </div>
+
+                <div className="flex items-center gap-4 font-bold">
+                  <span>Gross GMV: ₹{metrics.grossGMV.toFixed(2)}</span>
+                  <span className="text-emerald-700">Platform Revenue (12%): ₹{metrics.totalPlatformFees.toFixed(2)}</span>
+                </div>
+              </div>
             </div>
           </div>
+        )}
 
-          {loading ? (
-            <div className="py-12 text-center text-slate-400 space-y-2">
-              <RefreshCw className="w-6 h-6 animate-spin text-emerald-600 mx-auto" />
-              <p className="text-xs font-semibold">Calculating 100+ restaurant commissions...</p>
+        {/* TAB 2: RESTAURANT EARNINGS & FEE LEDGER */}
+        {activeTab === 'RESTAURANTS' && (
+          <div className="space-y-4">
+            <div className="bg-white rounded-3xl border border-slate-200 shadow-xs overflow-hidden">
+              <div className="p-6 border-b border-slate-100 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+                <div>
+                  <h3 className="text-lg font-black text-slate-900 flex items-center gap-2">
+                    <Store className="w-5 h-5 text-emerald-600" /> Restaurant Earnings & Fee Ledger
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Itemized platform fees due per restaurant. Click "Send Fee Request" to generate an official payment invoice.
+                  </p>
+                </div>
+              </div>
+
+              {restaurantLedger.length === 0 ? (
+                <div className="p-12 text-center space-y-3">
+                  <Store className="w-12 h-12 text-slate-300 mx-auto" />
+                  <h3 className="text-lg font-bold text-slate-800">No partner restaurants found</h3>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="bg-slate-50/80 border-b border-slate-200 text-[11px] font-black uppercase tracking-wider text-slate-500">
+                        <th className="py-4 px-6">Restaurant Store</th>
+                        <th className="py-4 px-6">Owner Name</th>
+                        <th className="py-4 px-6">Contact Email & Phone</th>
+                        <th className="py-4 px-6 text-center">Orders</th>
+                        <th className="py-4 px-6 text-right">Gross GMV</th>
+                        <th className="py-4 px-6 text-right">Store Net (88%)</th>
+                        <th className="py-4 px-6 text-right">Fee Due (12%)</th>
+                        <th className="py-4 px-6 text-center">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 text-xs font-medium text-slate-700">
+                      {restaurantLedger.map((store) => {
+                        return (
+                          <tr key={store.donorId || store.restaurantName} className="hover:bg-slate-50/80 transition">
+                            <td className="py-4 px-6 whitespace-nowrap">
+                              <div className="font-black text-slate-900 text-sm flex items-center gap-1.5">
+                                <Building className="w-4 h-4 text-emerald-600 shrink-0" />
+                                <span>{store.restaurantName}</span>
+                              </div>
+                            </td>
+
+                            <td className="py-4 px-6 whitespace-nowrap font-bold text-slate-800">
+                              <div className="flex items-center gap-1.5">
+                                <User className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                                <span>{store.ownerName}</span>
+                              </div>
+                            </td>
+
+                            <td className="py-4 px-6 whitespace-nowrap">
+                              <div className="font-bold text-slate-800 flex items-center gap-1">
+                                <Mail className="w-3 h-3 text-slate-400 shrink-0" />
+                                <span>{store.email}</span>
+                              </div>
+                              <div className="text-[11px] text-slate-500 flex items-center gap-1 mt-0.5">
+                                <Phone className="w-3 h-3 text-slate-400 shrink-0" />
+                                <span>{store.phone}</span>
+                              </div>
+                            </td>
+
+                            <td className="py-4 px-6 text-center whitespace-nowrap font-bold text-slate-800">
+                              <span className="px-2.5 py-1 bg-slate-100 rounded-xl border border-slate-200">
+                                {store.totalOrders} total ({store.completedOrders} completed)
+                              </span>
+                            </td>
+
+                            <td className="py-4 px-6 text-right whitespace-nowrap font-black text-slate-900">
+                              ₹{store.grossGMV.toFixed(2)}
+                            </td>
+
+                            <td className="py-4 px-6 text-right whitespace-nowrap font-black text-slate-800">
+                              ₹{store.donorEarnings.toFixed(2)}
+                            </td>
+
+                            <td className="py-4 px-6 text-right whitespace-nowrap font-black text-emerald-700 bg-emerald-50/50">
+                              ₹{store.platformFeeDue.toFixed(2)}
+                            </td>
+
+                            {/* Interactive Button opens Fee Payment Modal */}
+                            <td className="py-4 px-6 text-center whitespace-nowrap">
+                              <button
+                                type="button"
+                                onClick={() => setSelectedStoreForEmail(store)}
+                                className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-[11px] rounded-xl shadow-xs transition"
+                              >
+                                <Send className="w-3.5 h-3.5" />
+                                <span>Send Fee Request</span>
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
-          ) : filteredLedger.length === 0 ? (
-            <div className="py-12 text-center text-slate-400 space-y-1">
-              <p className="text-sm font-bold text-slate-700">No restaurants match your filter</p>
-              <p className="text-xs text-slate-500">Ensure completed orders exist in the database.</p>
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
-                <thead>
-                  <tr className="border-b border-slate-100 text-slate-400 uppercase tracking-wider font-extrabold">
-                    <th className="py-3 px-2">Restaurant / Business</th>
-                    <th className="py-3 px-2">City</th>
-                    <th className="py-3 px-2">Completed Orders</th>
-                    <th className="py-3 px-2">Gross Sales</th>
-                    <th className="py-3 px-2 text-emerald-700">BiteShare Cut (12%)</th>
-                    <th className="py-3 px-2 text-slate-900">Store Payout (88%)</th>
-                    <th className="py-3 px-2">Store UPI ID</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
-                  {filteredLedger.map((r) => (
-                    <tr key={r.donor_id} className="hover:bg-slate-50/80 transition">
-                      <td className="py-3.5 px-2 font-black text-slate-900">{r.restaurant_name}</td>
-                      <td className="py-3.5 px-2 font-semibold text-slate-600">{r.city || 'Bareilly'}</td>
-                      <td className="py-3.5 px-2 font-bold text-slate-800">{r.total_completed_pickups} Orders</td>
-                      <td className="py-3.5 px-2 font-bold text-slate-900">₹{r.total_gross_sales}</td>
-                      <td className="py-3.5 px-2 font-black text-emerald-700">+₹{r.biteshare_12_pct_fee}</td>
-                      <td className="py-3.5 px-2 font-black text-slate-900">₹{r.restaurant_88_pct_payout}</td>
-                      <td className="py-3.5 px-2 font-mono text-[11px] text-slate-500">
-                        {r.store_upi_id ? (
-                          <span className="text-emerald-800 font-bold bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
-                            {r.store_upi_id}
-                          </span>
-                        ) : (
-                          <span className="text-slate-400 italic">Not Added</span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
+          </div>
+        )}
 
       </div>
+
+      {/* 📧 FEE PAYMENT REQUEST & BILLING INVOICE MODAL */}
+      <AnimatePresence>
+        {selectedStoreForEmail && (
+          <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white rounded-3xl max-w-lg w-full p-6 sm:p-8 shadow-2xl border border-slate-200 space-y-5 relative my-8"
+            >
+              <button
+                onClick={() => setSelectedStoreForEmail(null)}
+                className="absolute top-5 right-5 p-1.5 text-slate-400 hover:text-slate-600 rounded-full transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+
+              {/* Modal Header */}
+              <div className="space-y-1">
+                <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-emerald-100 text-emerald-800 text-xs font-black uppercase tracking-wider rounded-full border border-emerald-200">
+                  <Receipt className="w-3.5 h-3.5 text-emerald-600" /> Platform Fee Billing Invoice
+                </div>
+                <h3 className="text-2xl font-black text-slate-900">
+                  {selectedStoreForEmail.restaurantName}
+                </h3>
+                <p className="text-slate-500 text-xs">
+                  Owner: <strong className="text-slate-800">{selectedStoreForEmail.ownerName}</strong> ({selectedStoreForEmail.email})
+                </p>
+              </div>
+
+              {/* Financial Summary Card */}
+              <div className="bg-slate-50 rounded-2xl p-4 border border-slate-200 space-y-2 text-xs">
+                <div className="flex justify-between text-slate-600 font-medium">
+                  <span>Total Orders Processed:</span>
+                  <span className="font-bold text-slate-900">{selectedStoreForEmail.totalOrders} order(s)</span>
+                </div>
+                <div className="flex justify-between text-slate-600 font-medium">
+                  <span>Gross Sales Volume (GMV):</span>
+                  <span className="font-bold text-slate-900">₹{selectedStoreForEmail.grossGMV.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between text-slate-600 font-medium">
+                  <span>Net Store Earnings (88%):</span>
+                  <span className="font-bold text-slate-900">₹{selectedStoreForEmail.donorEarnings.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between text-emerald-800 font-extrabold text-sm pt-2 border-t border-slate-200">
+                  <span>BiteShare Fee Due (12%):</span>
+                  <span className="text-base text-emerald-700 font-black">₹{selectedStoreForEmail.platformFeeDue.toFixed(2)}</span>
+                </div>
+              </div>
+
+              {/* Full Pre-Formatted Invoice Text Box */}
+              <div className="space-y-1.5">
+                <label className="block text-[11px] font-black uppercase tracking-wider text-slate-500">
+                  Invoice & Payment Request Message
+                </label>
+                <textarea
+                  readOnly
+                  rows={7}
+                  value={generateFullInvoiceText(selectedStoreForEmail)}
+                  className="w-full p-3 rounded-2xl border border-slate-200 text-xs font-mono text-slate-700 bg-slate-50 focus:outline-none resize-none leading-relaxed"
+                />
+              </div>
+
+              {/* Action Buttons */}
+              <div className="space-y-2 pt-1">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {/* Button 1: Direct Web Gmail Compose in New Tab (100% Guaranteed) */}
+                  <a
+                    href={getGmailWebComposeUrl(selectedStoreForEmail)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="py-3 px-4 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-xl shadow-md transition flex items-center justify-center gap-2"
+                  >
+                    <ExternalLink className="w-4 h-4" />
+                    <span>Open in Web Gmail</span>
+                  </a>
+
+                  {/* Button 2: Copy Full Invoice Text */}
+                  <button
+                    type="button"
+                    onClick={() =>
+                      handleCopyText(generateFullInvoiceText(selectedStoreForEmail), 'INVOICE')
+                    }
+                    className="py-3 px-4 bg-slate-100 hover:bg-slate-200 text-slate-800 font-extrabold text-xs rounded-xl transition flex items-center justify-center gap-2"
+                  >
+                    {copiedType === 'INVOICE' ? (
+                      <>
+                        <Check className="w-4 h-4 text-emerald-600" />
+                        <span>Invoice Copied!</span>
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="w-4 h-4 text-slate-600" />
+                        <span>Copy Invoice Text</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+
+                <div className="flex items-center justify-between pt-1">
+                  {/* Native mailto link */}
+                  <a
+                    href={getNativeMailtoUrl(selectedStoreForEmail)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-[11px] font-extrabold text-emerald-700 hover:underline flex items-center gap-1"
+                  >
+                    <Mail className="w-3.5 h-3.5" /> Launch Native Mail App
+                  </a>
+
+                  {/* Copy Store Email Button */}
+                  {selectedStoreForEmail.email && selectedStoreForEmail.email !== 'N/A' && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        handleCopyText(selectedStoreForEmail.email, 'EMAIL')
+                      }
+                      className="text-slate-500 hover:text-slate-800 font-bold text-[11px] flex items-center gap-1 transition"
+                    >
+                      {copiedType === 'EMAIL' ? (
+                        <span className="text-emerald-600 font-extrabold">✓ Email Copied</span>
+                      ) : (
+                        <span>Copy Email ({selectedStoreForEmail.email})</span>
+                      )}
+                    </button>
+                  )}
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
