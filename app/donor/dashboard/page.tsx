@@ -140,7 +140,7 @@ export default function DonorDashboardPage() {
     setLoadingList(false);
   };
 
-  // 📍 GPS Live Geolocation Button Handler (Safely scoped to client browser)
+  // 📍 GPS Live Geolocation Button Handler
   const handleGetGpsLocation = () => {
     if (typeof window === 'undefined' || !navigator.geolocation) {
       setMessage({ text: 'Geolocation is not supported by your browser.', type: 'error' });
@@ -292,8 +292,7 @@ export default function DonorDashboardPage() {
       country: country.trim(),
       latitude: finalLat,
       longitude: finalLng,
-      pickup_window_end: finalPickupEnd,
-      expires_at: finalPickupEnd,
+      pickup_window_end: finalPickupEnd, // ⚡ Uses existing schema column
       status: 'AVAILABLE',
       created_at: new Date().toISOString(),
     };

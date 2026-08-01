@@ -9,7 +9,6 @@ import {
   Database,
   Share2,
   UserCheck,
-  Cookie,
   Mail,
   CheckCircle2,
   ShieldCheck,
