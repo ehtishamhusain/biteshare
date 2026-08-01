@@ -23,6 +23,8 @@ import {
   ChevronRight,
   Building,
   RefreshCw,
+  HeartHandshake,
+  Recycle,
 } from 'lucide-react';
 
 // Explicitly typed Animation Variants for zero TypeScript errors
@@ -50,10 +52,12 @@ export default function Home() {
   // 🔄 Fetch the most recently published AVAILABLE food bundle from Supabase
   const fetchLatestBundle = async () => {
     setLoadingBundle(true);
+    const nowIso = new Date().toISOString();
     const { data, error } = await supabase
       .from('food_bundles')
       .select('*, donor:profiles(organization_name, full_name, city)')
       .eq('status', 'AVAILABLE')
+      .gt('expires_at', nowIso)
       .order('created_at', { ascending: false })
       .limit(1)
       .maybeSingle();
@@ -96,12 +100,12 @@ export default function Home() {
       </div>
 
       <div className="relative z-10">
-        {/* 🚀 Hero Section */}
-        <section className="relative pt-12 pb-20 lg:pt-20 lg:pb-28 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
+        {/* 🚀 Hero Section - Compacted top padding so it fits nicely */}
+        <section className="relative pt-4 pb-16 lg:pt-6 lg:pb-20 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 lg:gap-8 items-center">
             {/* Hero Left Content */}
             <motion.div
-              className="lg:col-span-7 space-y-8 text-center lg:text-left"
+              className="lg:col-span-7 space-y-6 text-center lg:text-left"
               initial="hidden"
               animate="visible"
               variants={staggerContainer}
@@ -116,7 +120,7 @@ export default function Home() {
                   <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-600"></span>
                 </span>
                 <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
-                <span>Hyper-Local Zero Food Waste</span>
+                <span>Hyper-Local Food Redistribution Network</span>
               </motion.div>
 
               {/* Dynamic Headline */}
@@ -124,9 +128,9 @@ export default function Home() {
                 variants={fadeInUp}
                 className="text-4xl sm:text-6xl lg:text-7xl font-black tracking-tight leading-[1.1] text-slate-900"
               >
-                Turn Surplus Food into{' '}
+                Driving Zero Hunger{' '}
                 <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700">
-                  Community Impact
+                Through Zero Food Waste.
                 </span>
               </motion.h1>
 
@@ -135,8 +139,36 @@ export default function Home() {
                 variants={fadeInUp}
                 className="text-slate-600 text-base sm:text-xl font-normal leading-relaxed max-w-2xl mx-auto lg:mx-0"
               >
-                Connecting local bakeries, restaurants, and grocery stores with community members and neighborhood shelters in real time.
+                We connect local restaurants, bakeries, and grocery stores directly with neighbors and shelters to feed families and protect our planet.
               </motion.p>
+
+              {/* 🌟 2 Core Objective Highlight Cards */}
+              <motion.div
+                variants={fadeInUp}
+                className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-xl mx-auto lg:mx-0 pt-1"
+              >
+                {/* Objective 1 Card */}
+                <div className="p-4 rounded-2xl bg-white/80 backdrop-blur-md border border-emerald-100 shadow-xs flex items-center gap-3.5 text-left group hover:border-emerald-300 transition">
+                  <div className="p-2.5 bg-emerald-100 text-emerald-700 rounded-xl group-hover:scale-110 transition-transform">
+                    <HeartHandshake className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <div className="text-xs font-black uppercase text-emerald-800">Primary Goal</div>
+                    <div className="text-xs font-bold text-slate-800">Removing Hunger Daily</div>
+                  </div>
+                </div>
+
+                {/* Objective 2 Card */}
+                <div className="p-4 rounded-2xl bg-white/80 backdrop-blur-md border border-teal-100 shadow-xs flex items-center gap-3.5 text-left group hover:border-teal-300 transition">
+                  <div className="p-2.5 bg-teal-100 text-teal-700 rounded-xl group-hover:scale-110 transition-transform">
+                    <Recycle className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <div className="text-xs font-black uppercase text-teal-800">Secondary Goal</div>
+                    <div className="text-xs font-bold text-slate-800">100% Zero Waste</div>
+                  </div>
+                </div>
+              </motion.div>
 
               {/* Action Buttons */}
               <motion.div
@@ -256,16 +288,22 @@ export default function Home() {
                     </Link>
                   </div>
                 ) : (
-                  <div className="py-8 text-center space-y-3">
-                    <Utensils className="w-10 h-10 text-slate-300 mx-auto" />
-                    <p className="text-xs font-semibold text-slate-600">
-                      No active listings right now. Check back soon or publish one as a donor!
-                    </p>
+                  <div className="py-10 text-center space-y-3">
+                    <div className="w-12 h-12 bg-emerald-50 text-emerald-600 rounded-2xl flex items-center justify-center mx-auto border border-emerald-100">
+                      <Utensils className="w-6 h-6" />
+                    </div>
+                    <div className="space-y-1">
+                      <h4 className="font-extrabold text-slate-900 text-sm">No Active Food Available Nearby</h4>
+                      <p className="text-xs text-slate-500 px-2 leading-relaxed">
+                        There are currently no surplus food bundles posted in your area. Check back soon or publish a surplus bundle if you are a food business!
+                      </p>
+                    </div>
                     <Link
                       href="/feed"
-                      className="inline-block px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl text-xs font-bold transition"
+                      className="inline-flex items-center gap-1.5 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl transition shadow-xs mt-1"
                     >
-                      View Explore Feed
+                      <span>Browse Explore Feed</span>
+                      <ChevronRight className="w-3.5 h-3.5" />
                     </Link>
                   </div>
                 )}
@@ -289,50 +327,6 @@ export default function Home() {
           </div>
         </section>
 
-        {/*
-        {/* 📊 Impact Metrics Bar */}
-        {/*
-        <section className="border-y border-slate-200 bg-white py-12 shadow-xs">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <motion.div
-              className="grid grid-cols-2 md:grid-cols-4 gap-8 text-center"
-              initial="hidden"
-              whileInView="visible"
-              viewport={{ once: true }}
-              variants={staggerContainer}
-            >
-              <motion.div variants={fadeInUp} className="space-y-1">
-                <div className="text-3xl sm:text-5xl font-black text-emerald-600">12,500+</div>
-                <div className="text-xs font-bold text-slate-500 uppercase tracking-widest">
-                  Meals Rescued
-                </div>
-              </motion.div>
-
-              <motion.div variants={fadeInUp} className="space-y-1">
-                <div className="text-3xl sm:text-5xl font-black text-emerald-600">85+</div>
-                <div className="text-xs font-bold text-slate-500 uppercase tracking-widest">
-                  Partner Businesses
-                </div>
-              </motion.div>
-
-              <motion.div variants={fadeInUp} className="space-y-1">
-                <div className="text-3xl sm:text-5xl font-black text-emerald-600">15.2 Tons</div>
-                <div className="text-xs font-bold text-slate-500 uppercase tracking-widest">
-                  CO₂ Emissions Offset
-                </div>
-              </motion.div>
-
-              <motion.div variants={fadeInUp} className="space-y-1">
-                <div className="text-3xl sm:text-5xl font-black text-emerald-600">100%</div>
-                <div className="text-xs font-bold text-slate-500 uppercase tracking-widest">
-                  Verified Quality
-                </div>
-              </motion.div>
-            </motion.div>
-          </div>
-        </section>
-        */}
-
         {/* 🌟 OUR MISSION SECTION */}
         <MissionSection />
 
@@ -342,7 +336,7 @@ export default function Home() {
         {/* ⚡ REDESIGNED ANIMATED "HOW IT WORKS" SECTION */}
         <HowItWorksSection />
 
-        {/* 🍱 BENTO FEATURE SHOWCASE (NOW A SEPARATE COMPONENT) */}
+        {/* 🍱 BENTO FEATURE SHOWCASE */}
         <FeaturesSection />
 
         {/* ❓ FREQUENTLY ASKED QUESTIONS (FAQ) SECTION */}

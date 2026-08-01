@@ -415,7 +415,7 @@ export default function AboutPage() {
                 <div>
                   <h3 className="text-2xl font-black text-slate-900">Ehtisham Husain</h3>
                   <p className="text-xs font-extrabold text-emerald-600 mt-0.5 uppercase tracking-wider">
-                    Founder & Full-Stack Architect
+                    Founder
                   </p>
                   <div className="flex items-center justify-center gap-1 text-[11px] text-slate-500 mt-1 font-semibold">
                     <MapPin className="w-3.5 h-3.5 text-emerald-600" /> Bareilly, Uttar Pradesh, India
@@ -434,10 +434,13 @@ export default function AboutPage() {
 
                 <div className="space-y-3 text-slate-600 text-xs sm:text-sm font-medium leading-relaxed">
                   <p>
-                    Driven by a belief that technology should solve fundamental human needs, Ehtisham architected BiteShare to connect local food businesses directly with neighboring families and community shelters.
+                    Ehtisham Husain, the founder of BiteShare, has a strong academic background in technology and a genuine passion for solving real-world problems. While continuing his studies, he has focused on building practical, scalable digital solutions that address meaningful human needs.
                   </p>
                   <p>
-                    Combining full-stack web development with hyper-local geospatial logistics, Ehtisham built BiteShare with real-time WebSocket synchronization, anti-fraud 4-digit verification handshakes, and interactive location mapping.
+                    The idea for BiteShare came from a simple but powerful observation—every day, perfectly good food is thrown away while many people still go to bed hungry. That realization sparked the vision to bridge this gap by turning surplus food into support for those in need through a simple, community-driven platform.
+                  </p>
+                  <p>
+                      At its heart, BiteShare is built on values of responsibility, dignity, and impact. It represents a future where no food is wasted, no person is hungry, and technology is used not just for innovation, but to create real, positive change in communities.
                   </p>
                 </div>
 
@@ -450,10 +453,6 @@ export default function AboutPage() {
                   <div className="p-3 bg-slate-50 rounded-2xl border border-slate-100 text-center">
                     <div className="text-sm sm:text-base font-black text-emerald-600">Zero Waste</div>
                     <div className="text-[10px] text-slate-500 font-bold uppercase">Environmental Goal</div>
-                  </div>
-                  <div className="p-3 bg-slate-50 rounded-2xl border border-slate-100 text-center col-span-2 sm:col-span-1">
-                    <div className="text-sm sm:text-base font-black text-emerald-600">Full-Stack</div>
-                    <div className="text-[10px] text-slate-500 font-bold uppercase">Next.js & Supabase</div>
                   </div>
                 </div>
 

@@ -71,16 +71,24 @@ export default function SingleRestaurantPage() {
 
     if (profile) setDonorProfile(profile);
 
-    // 2. Fetch Surplus Food Bundles
+    // 2. Fetch Surplus Food Bundles (Excluding expired items)
+    const nowIso = new Date().toISOString();
     const { data: foodItems } = await supabase
       .from('food_bundles')
       .select('*')
       .eq('donor_id', id)
       .eq('status', 'AVAILABLE')
+      .gt('expires_at', nowIso) // ⚡ Hides items whose expiration time has passed
       .order('created_at', { ascending: false });
 
     if (foodItems) {
-      const processed = foodItems.filter((b) => (Number(b.quantity_remaining) ?? 1) > 0);
+      const nowTime = new Date().getTime();
+      const processed = foodItems.filter((b) => {
+        const isExpired = b.expires_at ? new Date(b.expires_at).getTime() < nowTime : false;
+        const hasStock = (Number(b.quantity_remaining) ?? 1) > 0;
+        return hasStock && !isExpired;
+      });
+
       setBundles(processed);
 
       // Initialize selected quantities map to 1 for each bundle
