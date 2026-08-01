@@ -235,6 +235,7 @@ export default function DonorEarningsPage() {
         </motion.div>
 
         {/* 💳 UPI Payout Settings Form */}
+        {/*
         <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
@@ -272,7 +273,8 @@ export default function DonorEarningsPage() {
             </button>
           </form>
         </motion.div>
-
+        */}
+        
         {/* 📜 Transactions Breakdown Table */}
         <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden space-y-4 p-6 sm:p-8">
           <div className="flex items-center justify-between border-b border-slate-100 pb-4">

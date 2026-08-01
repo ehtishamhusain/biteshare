@@ -1,37 +1,37 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
-import { motion } from 'framer-motion';
 import {
-  Award,
-  Printer,
   Download,
-  ShieldCheck,
+  ArrowLeft,
   RefreshCw,
-  Utensils,
-  MapPin,
-  CheckCircle2,
-  Loader2,
+  Award,
+  ShieldCheck,
 } from 'lucide-react';
 
-export default function DonorCertificatePage() {
-  const [donorProfile, setDonorProfile] = useState<any>(null);
-  const [stats, setStats] = useState({
-    totalMeals: 0,
-    totalKgSaved: 0,
-    co2OffsetKg: 0,
-    completedPickups: 0,
-  });
+export default function DonorCsrCertificatePage() {
+  const certificateRef = useRef<HTMLDivElement>(null);
+
   const [loading, setLoading] = useState(true);
-  const [generatingPdf, setGeneratingPdf] = useState(false);
-  const [toastMessage, setToastMessage] = useState('');
+  const [downloading, setDownloading] = useState(false);
+  const [donorProfile, setDonorProfile] = useState<any>(null);
+  const [metrics, setStats] = useState({
+    totalMeals: 0,
+    co2SavedKg: 0,
+    grossRevenue: 0,
+    completedClaimsCount: 0,
+  });
+
+  const [certId, setCertId] = useState('');
+  const [issueDate, setIssueDate] = useState('');
 
   useEffect(() => {
-    fetchDonorCertificateData();
+    fetchCertificateData();
   }, []);
 
-  const fetchDonorCertificateData = async () => {
+  const fetchCertificateData = async () => {
     setLoading(true);
 
     const {
@@ -52,363 +52,314 @@ export default function DonorCertificatePage() {
 
     if (profile) setDonorProfile(profile);
 
-    // 2. Fetch all completed claims for this donor's food bundles
-    const { data: donorBundles } = await supabase
+    // 2. Fetch Food Bundles & Claims
+    const { data: bundles } = await supabase
       .from('food_bundles')
-      .select('id')
+      .select('*')
       .eq('donor_id', user.id);
 
-    if (donorBundles && donorBundles.length > 0) {
-      const bundleIds = donorBundles.map((b) => b.id);
+    if (bundles && bundles.length > 0) {
+      const bundleIds = bundles.map((b) => b.id);
 
-      const { data: claimsData } = await supabase
+      const { data: claims } = await supabase
         .from('claims')
-        .select('claimed_quantity, status')
-        .in('bundle_id', bundleIds)
-        .eq('status', 'COMPLETED');
+        .select('*')
+        .in('bundle_id', bundleIds);
 
-      if (claimsData) {
-        const meals = claimsData.reduce((acc, curr) => acc + (Number(curr.claimed_quantity) || 1), 0);
-        const kgSaved = Number((meals * 0.4).toFixed(1)); // Approx 400g per meal
-        const co2 = Number((kgSaved * 2.5).toFixed(1)); // 2.5kg CO2 per kg food saved
+      let meals = 0;
+      let grossRev = 0;
+      let completedCount = 0;
 
-        setStats({
-          totalMeals: meals,
-          totalKgSaved: kgSaved,
-          co2OffsetKg: co2,
-          completedPickups: claimsData.length,
+      if (claims && claims.length > 0) {
+        const completedClaims = claims.filter(
+          (c) => String(c.status).toUpperCase() === 'COMPLETED'
+        );
+
+        completedCount = completedClaims.length;
+
+        completedClaims.forEach((c) => {
+          const qty = parseInt(c.claimed_quantity) || 1;
+          meals += qty;
+          grossRev += Number(c.total_price) || 0;
         });
       }
+
+      setStats({
+        totalMeals: meals,
+        co2SavedKg: Math.round(meals * 2.5 * 10) / 10,
+        grossRevenue: Math.round(grossRev),
+        completedClaimsCount: completedCount,
+      });
     }
 
+    const today = new Date();
+    const formattedDate = today.toLocaleDateString('en-US', {
+      month: 'long',
+      day: 'numeric',
+      year: 'numeric',
+    });
+
+    const shortUserHash = user.id.slice(0, 6).toUpperCase();
+    const generatedCertId = `BS-CSR-${today.getFullYear()}-${shortUserHash}`;
+
+    setCertId(generatedCertId);
+    setIssueDate(formattedDate);
     setLoading(false);
   };
 
-  const handlePrint = () => {
-    window.print();
-  };
-
-  // 📥 ISOLATED DIRECT PDF DOWNLOAD HANDLER (OKLAB/OKLCH SAFE)
-  const handleSavePdf = async () => {
-    setGeneratingPdf(true);
-    setToastMessage('');
+  // 📸 html2canvas Export with lab() color parsing bypass
+  const handleDownloadCertificate = async () => {
+    if (!certificateRef.current) return;
+    setDownloading(true);
 
     try {
-      // 1. Load html2pdf.js dynamically if not present
-      if (!(window as any).html2pdf) {
-        await new Promise<void>((resolve, reject) => {
-          const script = document.createElement('script');
-          script.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js';
-          script.onload = () => resolve();
-          script.onerror = () => reject(new Error('Failed to load PDF generator library'));
-          document.body.appendChild(script);
-        });
-      }
+      // @ts-ignore - Dynamic import to prevent SSR issues
+      const html2canvasModule = await import('html2canvas');
+      const html2canvas = html2canvasModule.default || html2canvasModule;
 
-      const businessName = donorProfile?.organization_name || donorProfile?.full_name || 'BiteShare Food Partner';
-      const cleanName = businessName.replace(/[^a-zA-Z0-9]/g, '_');
-      const issueDate = new Date().toLocaleDateString('en-US', {
-        month: 'long',
-        day: 'numeric',
-        year: 'numeric',
+      const canvas = await html2canvas(certificateRef.current, {
+        scale: 3, // High DPI capture for 4K export
+        useCORS: true,
+        allowTaint: true,
+        backgroundColor: '#ffffff',
+        logging: false,
+        onclone: (clonedDoc: Document) => {
+          // Remove stylesheets containing modern lab()/oklch() functions from cloned render tree
+          const styleElements = clonedDoc.querySelectorAll('style, link[rel="stylesheet"]');
+          styleElements.forEach((el) => {
+            if (el.textContent?.includes('lab(') || el.textContent?.includes('oklch(')) {
+              el.remove();
+            }
+          });
+        },
       });
 
-      // 2. Pure HTML & HEX inline styles (Completely bypasses Tailwind oklab CSS variables)
-      const cleanCertHtml = `
-        <div style="
-          width: 820px;
-          padding: 40px;
-          background-color: #ffffff;
-          color: #0f172a;
-          font-family: Arial, Helvetica, sans-serif;
-          border: 12px solid #d1fae5;
-          box-sizing: border-box;
-          text-align: center;
-          position: relative;
-        ">
-          <div style="position: absolute; top: 10px; left: 10px; width: 30px; height: 30px; border-top: 4px solid #059669; border-left: 4px solid #059669;"></div>
-          <div style="position: absolute; top: 10px; right: 10px; width: 30px; height: 30px; border-top: 4px solid #059669; border-right: 4px solid #059669;"></div>
-          <div style="position: absolute; bottom: 10px; left: 10px; width: 30px; height: 30px; border-bottom: 4px solid #059669; border-left: 4px solid #059669;"></div>
-          <div style="position: absolute; bottom: 10px; right: 10px; width: 30px; height: 30px; border-bottom: 4px solid #059669; border-right: 4px solid #059669;"></div>
-
-          <div style="margin-bottom: 20px;">
-            <div style="
-              display: inline-block;
-              background-color: #059669;
-              color: #ffffff;
-              padding: 10px 18px;
-              border-radius: 12px;
-              font-size: 18px;
-              font-weight: bold;
-              margin-bottom: 12px;
-            ">
-              🍴 BiteShare
-            </div>
-            <div style="font-size: 11px; font-weight: bold; color: #047857; letter-spacing: 2px; text-transform: uppercase;">
-              BiteShare Zero-Waste Community Initiative
-            </div>
-            <h1 style="font-size: 26px; font-weight: 900; color: #0f172a; margin: 8px 0; text-transform: uppercase;">
-              Certificate of Sustainability Impact
-            </h1>
-            <p style="font-size: 12px; color: #64748b; margin: 0;">
-              This official document certifies the corporate social responsibility (CSR) and zero-waste contribution of:
-            </p>
-          </div>
-
-          <div style="
-            padding: 14px 0;
-            border-top: 2px solid #e2e8f0;
-            border-bottom: 2px solid #e2e8f0;
-            margin: 0 auto 24px auto;
-            max-width: 500px;
-          ">
-            <h2 style="font-size: 24px; font-weight: 900; color: #065f46; margin: 0;">
-              ${businessName}
-            </h2>
-            ${donorProfile?.city ? `<div style="font-size: 12px; font-weight: bold; color: #64748b; margin-top: 4px;">📍 ${donorProfile.street_address ? donorProfile.street_address + ', ' : ''}${donorProfile.city}</div>` : ''}
-          </div>
-
-          <div style="display: flex; justify-content: space-between; gap: 12px; margin-bottom: 24px;">
-            <div style="flex: 1; background-color: #ecfdf5; border: 1px solid #a7f3d0; padding: 16px; border-radius: 12px;">
-              <div style="font-size: 24px; font-weight: 900; color: #065f46;">${stats.totalMeals}</div>
-              <div style="font-size: 10px; font-weight: bold; color: #047857; text-transform: uppercase;">Meals Donated</div>
-            </div>
-            <div style="flex: 1; background-color: #ecfdf5; border: 1px solid #a7f3d0; padding: 16px; border-radius: 12px;">
-              <div style="font-size: 24px; font-weight: 900; color: #065f46;">${stats.totalKgSaved} kg</div>
-              <div style="font-size: 10px; font-weight: bold; color: #047857; text-transform: uppercase;">Surplus Food Saved</div>
-            </div>
-            <div style="flex: 1; background-color: #ecfdf5; border: 1px solid #a7f3d0; padding: 16px; border-radius: 12px;">
-              <div style="font-size: 24px; font-weight: 900; color: #065f46;">${stats.co2OffsetKg} kg</div>
-              <div style="font-size: 10px; font-weight: bold; color: #047857; text-transform: uppercase;">CO₂ Offset</div>
-            </div>
-          </div>
-
-          <p style="font-size: 12px; color: #475569; font-style: italic; max-width: 550px; margin: 0 auto 24px auto; line-height: 1.5;">
-            "Through active partnership with BiteShare, ${businessName} has demonstrated exceptional commitment to eliminating urban food waste, supporting local shelters, and reducing environmental carbon footprint."
-          </p>
-
-          <div style="
-            border-top: 1px solid #f1f5f9;
-            padding-top: 16px;
-            display: flex;
-            justify-content: space-between;
-            align-items: flex-end;
-            text-align: left;
-          ">
-            <div>
-              <div style="font-size: 12px; font-weight: bold; color: #0f172a;">🛡️ Verified by BiteShare Network</div>
-              <div style="font-size: 11px; color: #94a3b8; margin-top: 2px;">Issued on: <strong>${issueDate}</strong></div>
-            </div>
-            <div style="text-align: right;">
-              <div style="width: 120px; border-bottom: 1px solid #94a3b8; margin-bottom: 4px; margin-left: auto;"></div>
-              <div style="font-size: 11px; font-weight: bold; color: #1e293b;">BiteShare Impact Directorate</div>
-              <div style="font-size: 10px; color: #94a3b8;">Bareilly, India</div>
-            </div>
-          </div>
-        </div>
-      `;
-
-      // 3. Attach temporary isolated element
-      const tempWrapper = document.createElement('div');
-      tempWrapper.style.position = 'fixed';
-      tempWrapper.style.left = '-9999px';
-      tempWrapper.style.top = '-9999px';
-      tempWrapper.innerHTML = cleanCertHtml;
-      document.body.appendChild(tempWrapper);
-
-      const opt = {
-        margin: [0.2, 0.2, 0.2, 0.2],
-        filename: `${cleanName}_BiteShare_Impact_Certificate.pdf`,
-        image: { type: 'jpeg', quality: 0.98 },
-        html2canvas: {
-          scale: 2,
-          useCORS: true,
-          logging: false,
-        },
-        jsPDF: { unit: 'in', format: 'a4', orientation: 'landscape' },
-      };
-
-      // 4. Trigger direct download
-      await (window as any).html2pdf().set(opt).from(tempWrapper.firstElementChild).save();
-
-      // 5. Cleanup
-      document.body.removeChild(tempWrapper);
-      setToastMessage('🎉 Impact Certificate downloaded directly to your device!');
+      const image = canvas.toDataURL('image/png', 1.0);
+      const link = document.createElement('a');
+      link.href = image;
+      link.download = `BiteShare_CSR_Certificate_${donorProfile?.organization_name || 'Partner'}.png`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
     } catch (err) {
-      console.error(err);
-      setToastMessage('❌ Direct download failed. Please use the Print option instead.');
+      console.error('Failed to export certificate image:', err);
+      alert('Failed to generate image. Please try again.');
     } finally {
-      setGeneratingPdf(false);
+      setDownloading(false);
     }
   };
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
-        <div className="text-center space-y-3">
-          <RefreshCw className="w-8 h-8 animate-spin text-emerald-600 mx-auto" />
-          <p className="text-slate-500 text-sm font-semibold">Generating your CSR Impact Certificate...</p>
-        </div>
-      </div>
-    );
-  }
-
-  const businessName = donorProfile?.organization_name || donorProfile?.full_name || 'BiteShare Food Partner';
-  const issueDate = new Date().toLocaleDateString('en-US', {
-    month: 'long',
-    day: 'numeric',
-    year: 'numeric',
-  });
+  const storeName =
+    donorProfile?.organization_name ||
+    donorProfile?.full_name ||
+    'Partner Business';
 
   return (
-    <div className="min-h-screen bg-slate-100 py-10 px-4 sm:px-6 lg:px-8 print:p-0 print:bg-white">
-      <div className="max-w-4xl mx-auto space-y-6">
+    <div className="min-h-screen bg-slate-100 py-10 px-4 sm:px-6 lg:px-8 font-sans">
+      <div className="max-w-5xl mx-auto space-y-6">
         
-        {/* Top Control Bar */}
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between bg-white p-4 sm:p-6 rounded-3xl border border-slate-200 shadow-xs gap-4 print:hidden">
+        {/* Navigation & Action Bar */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-6 rounded-3xl border border-slate-200 shadow-xs">
           <div>
-            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-100 text-emerald-800 text-xs font-black uppercase tracking-wider border border-emerald-200 mb-1">
-              <Award className="w-3.5 h-3.5 text-emerald-600" /> Corporate Responsibility
-            </div>
-            <h1 className="text-xl sm:text-2xl font-black text-slate-900">
-              CSR & Sustainability Certificate
+            <Link
+              href="/donor/dashboard"
+              className="inline-flex items-center gap-2 text-xs font-bold text-slate-600 hover:text-emerald-700 transition mb-1"
+            >
+              <ArrowLeft className="w-3.5 h-3.5" /> Back to Donor Station
+            </Link>
+            <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
+              Official CSR Impact Certificate
             </h1>
-            <p className="text-xs text-slate-500">
-              Official certificate verifying your zero-waste food donations on BiteShare.
-            </p>
           </div>
 
-          {/* Action Buttons */}
-          <div className="flex items-center gap-2.5 w-full sm:w-auto">
+          <div className="flex items-center gap-3 shrink-0">
             <button
-              onClick={handlePrint}
-              disabled={generatingPdf}
-              className="flex-1 sm:flex-none px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-extrabold text-xs sm:text-sm rounded-2xl transition flex items-center justify-center gap-2 border border-slate-200 disabled:opacity-50"
+              onClick={fetchCertificateData}
+              className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs rounded-2xl transition flex items-center gap-2"
             >
-              <Printer className="w-4 h-4 text-emerald-600" />
-              <span>Print Certificate</span>
+              <RefreshCw className={`w-3.5 h-3.5 text-emerald-600 ${loading ? 'animate-spin' : ''}`} />
+              <span>Refresh</span>
             </button>
 
             <button
-              onClick={handleSavePdf}
-              disabled={generatingPdf}
-              className="flex-1 sm:flex-none px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs sm:text-sm rounded-2xl transition shadow-md flex items-center justify-center gap-2 disabled:opacity-50"
+              onClick={handleDownloadCertificate}
+              disabled={downloading || loading}
+              className="px-6 py-2.5 bg-[#059669] hover:bg-emerald-700 text-white font-black text-xs rounded-2xl transition shadow-md flex items-center gap-2 disabled:opacity-50"
             >
-              {generatingPdf ? (
+              {downloading ? (
                 <>
-                  <Loader2 className="w-4 h-4 animate-spin text-white" />
-                  <span>Downloading PDF...</span>
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                  Generating PNG...
                 </>
               ) : (
                 <>
                   <Download className="w-4 h-4" />
-                  <span>Save as PDF</span>
+                  Download High-Res Certificate
                 </>
               )}
             </button>
           </div>
         </div>
 
-        {toastMessage && (
-          <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold rounded-2xl flex items-center gap-2 print:hidden">
-            <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
-            <span>{toastMessage}</span>
+        {/* 🏆 CERTIFICATE PREVIEW CONTAINER */}
+        {loading ? (
+          <div className="bg-white rounded-3xl p-16 text-center border border-slate-200 shadow-xs flex flex-col items-center justify-center space-y-3">
+            <RefreshCw className="w-8 h-8 animate-spin text-[#059669]" />
+            <p className="text-slate-500 text-sm font-semibold">Generating CSR Certificate...</p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto pb-4">
+            <div
+              ref={certificateRef}
+              style={{
+                width: '850px',
+                backgroundColor: '#ffffff',
+                border: '10px solid #064e3b',
+                padding: '40px',
+                margin: '0 auto',
+                boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+                position: 'relative',
+                userSelect: 'none',
+                fontFamily: "ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+                color: '#0f172a',
+              }}
+            >
+              {/* Gold Inner Decorative Border */}
+              <div
+                style={{
+                  border: '2px solid #d97706',
+                  padding: '32px',
+                  position: 'relative',
+                  backgroundColor: '#ffffff',
+                }}
+              >
+                {/* Decorative Corner Ornaments */}
+                <div style={{ position: 'absolute', top: '6px', left: '6px', width: '20px', height: '20px', borderTop: '2px solid #b45309', borderLeft: '2px solid #b45309' }} />
+                <div style={{ position: 'absolute', top: '6px', right: '6px', width: '20px', height: '20px', borderTop: '2px solid #b45309', borderRight: '2px solid #b45309' }} />
+                <div style={{ position: 'absolute', bottom: '6px', left: '6px', width: '20px', height: '20px', borderBottom: '2px solid #b45309', borderLeft: '2px solid #b45309' }} />
+                <div style={{ position: 'absolute', bottom: '6px', right: '6px', width: '20px', height: '20px', borderBottom: '2px solid #b45309', borderRight: '2px solid #b45309' }} />
+
+                {/* 🌟 100% OFFICIAL BRAND LOGO FROM /public/logo.png */}
+                <div style={{ textAlign: 'center', marginBottom: '16px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <img
+                      src="/logo.png"
+                      alt="BiteShare Logo"
+                      style={{
+                        height: '48px',
+                        width: 'auto',
+                        objectFit: 'contain',
+                        display: 'block',
+                        margin: '0 auto',
+                      }}
+                    />
+                  </div>
+
+                  <div style={{ fontSize: '10px', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.2em', color: '#047857', paddingTop: '10px' }}>
+                    Zero-Waste Community Initiative
+                  </div>
+
+                  <h2 style={{ fontSize: '26px', fontWeight: '900', textTransform: 'uppercase', color: '#0f172a', letterSpacing: '-0.01em', marginTop: '6px', marginBottom: '6px' }}>
+                    Certificate of Sustainability Impact
+                  </h2>
+
+                  <div style={{ width: '120px', height: '3px', backgroundColor: '#059669', margin: '0 auto', borderRadius: '999px' }} />
+                </div>
+
+                {/* Recipient Details */}
+                <div style={{ textAlign: 'center', marginTop: '16px', marginBottom: '16px' }}>
+                  <p style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.15em', fontWeight: '700', color: '#64748b' }}>
+                    This official document certifies the corporate social responsibility (CSR) contribution of:
+                  </p>
+
+                  <h3 style={{ fontSize: '34px', fontWeight: '900', color: '#064e3b', borderBottom: '2px dashed #f59e0b', display: 'inline-block', paddingBottom: '4px', paddingLeft: '24px', paddingRight: '24px', marginTop: '10px', marginBottom: '10px' }}>
+                    {storeName}
+                  </h3>
+
+                  <p style={{ fontSize: '12px', color: '#475569', maxWidth: '600px', margin: '0 auto', lineHeight: '1.6', fontStyle: 'italic', paddingTop: '6px' }}>
+                    "Through active partnership with BiteShare, {storeName} has demonstrated exceptional commitment to eliminating urban food waste, supporting local community members, and reducing environmental carbon footprint."
+                  </p>
+                </div>
+
+                {/* 📊 CSR IMPACT STATS GRID */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px', padding: '8px 0', marginTop: '16px', marginBottom: '16px' }}>
+                  <div style={{ backgroundColor: '#ecfdf5', padding: '14px', borderRadius: '16px', border: '1px solid #a7f3d0', textAlign: 'center' }}>
+                    <div style={{ fontSize: '11px', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.05em', color: '#065f46' }}>
+                      Meals Rescued
+                    </div>
+                    <div style={{ fontSize: '28px', fontWeight: '900', color: '#022c22' }}>
+                      {metrics.totalMeals}
+                    </div>
+                    <div style={{ fontSize: '10px', fontWeight: '600', color: '#047857' }}>
+                      Portions Saved
+                    </div>
+                  </div>
+
+                  <div style={{ backgroundColor: '#f0fdf4', padding: '14px', borderRadius: '16px', border: '1px solid #bbf7d0', textAlign: 'center' }}>
+                    <div style={{ fontSize: '11px', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.05em', color: '#115e59' }}>
+                      Surplus Food Saved
+                    </div>
+                    <div style={{ fontSize: '28px', fontWeight: '900', color: '#134e4a' }}>
+                      {metrics.co2SavedKg} kg
+                    </div>
+                    <div style={{ fontSize: '10px', fontWeight: '600', color: '#0d9488' }}>
+                      Kept Out of Landfills
+                    </div>
+                  </div>
+
+                  <div style={{ backgroundColor: '#fffbeb', padding: '14px', borderRadius: '16px', border: '1px solid #fde68a', textAlign: 'center' }}>
+                    <div style={{ fontSize: '11px', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.05em', color: '#92400e' }}>
+                      CO₂ Offset
+                    </div>
+                    <div style={{ fontSize: '28px', fontWeight: '900', color: '#451a03' }}>
+                      {Math.round(metrics.co2SavedKg * 2.5 * 10) / 10} kg
+                    </div>
+                    <div style={{ fontSize: '10px', fontWeight: '600', color: '#b45309' }}>
+                      Emissions Prevented
+                    </div>
+                  </div>
+                </div>
+
+                {/* ✍️ FOOTER SIGNATURES & STAMP SEAL */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: '16px', borderTop: '1px solid #e2e8f0', marginTop: '16px' }}>
+                  {/* Left: Verification & Date */}
+                  <div style={{ fontSize: '11px', lineHeight: '1.5' }}>
+                    <div style={{ fontWeight: '800', color: '#059669', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      <ShieldCheck className="w-3.5 h-3.5 text-[#059669]" /> Verified by BiteShare Network
+                    </div>
+                    <div style={{ color: '#64748b' }}>
+                      Issued on: <strong style={{ color: '#0f172a' }}>{issueDate}</strong>
+                    </div>
+                    <div style={{ fontFamily: 'monospace', fontSize: '10px', color: '#94a3b8' }}>
+                      ID: {certId}
+                    </div>
+                  </div>
+
+                  {/* Center: Gold Emblem Badge */}
+                  <div style={{ textAlign: 'center' }}>
+                    <div style={{ width: '52px', height: '52px', backgroundColor: '#d97706', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#ffffff', border: '2px solid #ffffff', boxShadow: '0 2px 8px rgba(0,0,0,0.15)', margin: '0 auto' }}>
+                      <Award className="w-7 h-7 text-white" />
+                    </div>
+                    <div style={{ fontSize: '9px', fontWeight: '900', textTransform: 'uppercase', letterSpacing: '0.1em', color: '#92400e', paddingTop: '4px' }}>
+                      Zero Waste Partner
+                    </div>
+                  </div>
+
+                  {/* Right: Directorate Line */}
+                  <div style={{ textAlign: 'right', fontSize: '11px', lineHeight: '1.4' }}>
+                    <div style={{ fontWeight: '900', color: '#0f172a' }}>
+                      BiteShare Impact Directorate
+                    </div>
+                    <div style={{ color: '#64748b', fontSize: '10px' }}>
+                      Bareilly, India
+                    </div>
+                  </div>
+                </div>
+
+              </div>
+            </div>
           </div>
         )}
-
-        {/* Display Certificate Card */}
-        <div
-          id="certificate-card"
-          className="bg-white rounded-3xl p-8 sm:p-14 border-8 border-emerald-800/10 shadow-xl relative overflow-hidden text-center space-y-8 print:shadow-none print:border-4 print:border-emerald-800 print:rounded-none"
-        >
-          {/* Decorative Corner Ornaments */}
-          <div className="absolute top-3 left-3 w-12 h-12 border-t-4 border-l-4 border-emerald-600 rounded-tl-xl print:border-emerald-800" />
-          <div className="absolute top-3 right-3 w-12 h-12 border-t-4 border-r-4 border-emerald-600 rounded-tr-xl print:border-emerald-800" />
-          <div className="absolute bottom-3 left-3 w-12 h-12 border-b-4 border-l-4 border-emerald-600 rounded-bl-xl print:border-emerald-800" />
-          <div className="absolute bottom-3 right-3 w-12 h-12 border-b-4 border-r-4 border-emerald-600 rounded-br-xl print:border-emerald-800" />
-
-          {/* Header */}
-          <div className="space-y-3">
-            <div className="flex justify-center">
-              <div className="bg-emerald-600 text-white p-3.5 rounded-2xl shadow-md">
-                <Utensils className="w-8 h-8" />
-              </div>
-            </div>
-
-            <span className="text-xs font-black uppercase tracking-widest text-emerald-700 block">
-              BiteShare Zero-Waste Community Initiative
-            </span>
-
-            <h2 className="text-2xl sm:text-4xl font-black text-slate-900 tracking-tight uppercase">
-              Certificate of Sustainability Impact
-            </h2>
-
-            <p className="text-xs text-slate-500 font-medium">
-              This official document certifies the corporate social responsibility (CSR) and zero-waste contribution of:
-            </p>
-          </div>
-
-          {/* Business Name */}
-          <div className="py-3 border-y-2 border-slate-200 max-w-lg mx-auto">
-            <h3 className="text-2xl sm:text-3xl font-black text-emerald-800 tracking-tight">
-              {businessName}
-            </h3>
-            {donorProfile?.city && (
-              <span className="text-xs font-bold text-slate-500 flex items-center justify-center gap-1 mt-1">
-                <MapPin className="w-3.5 h-3.5 text-emerald-600" /> {donorProfile.street_address ? `${donorProfile.street_address}, ` : ''}{donorProfile.city}
-              </span>
-            )}
-          </div>
-
-          {/* Impact Metrics Grid */}
-          <div className="grid grid-cols-3 gap-4 max-w-2xl mx-auto pt-2">
-            <div className="p-4 bg-emerald-50 rounded-2xl border border-emerald-200 text-center">
-              <span className="block text-2xl sm:text-3xl font-black text-emerald-800">{stats.totalMeals}</span>
-              <span className="text-[10px] sm:text-xs font-black uppercase text-emerald-900 tracking-wider">
-                Meals Donated
-              </span>
-            </div>
-
-            <div className="p-4 bg-emerald-50 rounded-2xl border border-emerald-200 text-center">
-              <span className="block text-2xl sm:text-3xl font-black text-emerald-800">{stats.totalKgSaved} kg</span>
-              <span className="text-[10px] sm:text-xs font-black uppercase text-emerald-900 tracking-wider">
-                Surplus Food Saved
-              </span>
-            </div>
-
-            <div className="p-4 bg-emerald-50 rounded-2xl border border-emerald-200 text-center">
-              <span className="block text-2xl sm:text-3xl font-black text-emerald-800">{stats.co2OffsetKg} kg</span>
-              <span className="text-[10px] sm:text-xs font-black uppercase text-emerald-900 tracking-wider">
-                CO₂ Offset
-              </span>
-            </div>
-          </div>
-
-          {/* Certification Text */}
-          <p className="text-xs text-slate-600 max-w-xl mx-auto leading-relaxed italic">
-            "Through active partnership with BiteShare, {businessName} has demonstrated exceptional commitment to eliminating urban food waste, supporting local shelters, and reducing environmental carbon footprint."
-          </p>
-
-          {/* Footer */}
-          <div className="pt-6 border-t border-slate-100 flex items-center justify-between text-left">
-            <div className="space-y-1">
-              <div className="flex items-center gap-1.5 text-xs font-bold text-slate-900">
-                <ShieldCheck className="w-4 h-4 text-emerald-600" />
-                <span>Verified by BiteShare Network</span>
-              </div>
-              <span className="block text-[11px] text-slate-400">
-                Issued on: <strong>{issueDate}</strong>
-              </span>
-            </div>
-
-            <div className="text-right space-y-1">
-              <div className="w-32 border-b border-slate-400 mb-1 ml-auto" />
-              <span className="block text-xs font-black text-slate-800">BiteShare Impact Directorate</span>
-              <span className="block text-[10px] text-slate-400">Bareilly, India</span>
-            </div>
-          </div>
-
-        </div>
 
       </div>
     </div>
