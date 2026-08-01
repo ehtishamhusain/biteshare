@@ -1,0 +1,27 @@
+[33mc20563f[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m)[m Enhances the Hero section and About page
+[33m3a43882[m Fixes donor dashboard issue
+[33m8096874[m Remove food if expires
+[33md8ae7e5[m Added Forgot Password
+[33m16f6780[m add email verification, profile guard, and strict 6-digit pincode validation
+[33m8a5b105[m Hide the Impact Metrics Bar and enhances Contact Us
+[33mad350b8[m Remove unused resend api route
+[33m8b2b044[m Final production build ready for deployment
+[33mca1dc28[m Hided Sponsor a Meal and move the map to Explore Restaurants
+[33m4a30256[m Updated Explore Restaurants and its text also
+[33m06cb667[m Edit the Home Page text, except Stay Informed
+[33m0d59f13[m Added Features and HowItWorks sections in Home page
+[33m4308de8[m Fixes donor and profile, and adding finance to admin
+[33m0073b72[m Added Sponsor a meal and Certificate for donor
+[33m60a6250[m Donor Pin Handshake Verification
+[33m874861c[m Adding restaurant search and restaurant review
+[33mffb5736[m Adding search option in Explore Feed
+[33mfa99d8f[m Enhancing the Privacy and Terms page
+[33m9df80f7[m Adding signup guidelines for both donor and recipients
+[33mc07a029[m Fix signup onboarding flow and profile redirection
+[33m7b368d7[m feat: add interactive FAQ section to Home page
+[33mad3679e[m feat: adding business model, founder's note and almost complete the website
+[33mc905376[m feat: display ordered items count, remaining stock, and total price in donor manage pickups board
+[33m5b3adb1[m feat: add guest auth popup modal for review submissions
+[33m3945d12[m feat: complete role-based routing, animated modals, profile fixes, and dynamic feed
+[33m8413581[m Initial commit - Complete BiteShare Web Application
+[33ma4a7a8c[m Initial commit from Create Next App

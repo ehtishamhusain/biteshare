@@ -71,22 +71,24 @@ export default function SingleRestaurantPage() {
 
     if (profile) setDonorProfile(profile);
 
-    // 2. Fetch Surplus Food Bundles (Excluding expired items)
-    const nowIso = new Date().toISOString();
-    const { data: foodItems } = await supabase
+    // 2. Fetch Surplus Food Bundles
+    let { data: foodItems } = await supabase
       .from('food_bundles')
       .select('*')
       .eq('donor_id', id)
-      .eq('status', 'AVAILABLE')
-      .gt('expires_at', nowIso) // ⚡ Hides items whose expiration time has passed
+      .in('status', ['AVAILABLE', 'available'])
       .order('created_at', { ascending: false });
 
     if (foodItems) {
       const nowTime = new Date().getTime();
       const processed = foodItems.filter((b) => {
-        const isExpired = b.expires_at ? new Date(b.expires_at).getTime() < nowTime : false;
-        const hasStock = (Number(b.quantity_remaining) ?? 1) > 0;
-        return hasStock && !isExpired;
+        const expTime = b.expires_at || b.pickup_window_end;
+        const isExpired = expTime ? new Date(expTime).getTime() < nowTime : false;
+        const remaining =
+          b.quantity_remaining !== null && b.quantity_remaining !== undefined
+            ? Number(b.quantity_remaining)
+            : Number(b.quantity) || 0;
+        return remaining > 0 && !isExpired;
       });
 
       setBundles(processed);
@@ -145,18 +147,31 @@ export default function SingleRestaurantPage() {
   // 🛍️ Claim Food with Custom Quantity and Financial Calculation
   const handleClaim = async (bundle: any) => {
     const bundleId = bundle.id;
-    const remainingQty = Number(bundle.quantity_remaining) || 1;
+    const remainingQty =
+      Number(
+        bundle.quantity_remaining !== null && bundle.quantity_remaining !== undefined
+          ? bundle.quantity_remaining
+          : bundle.quantity
+      ) || 1;
+    const originalQty = Number(bundle.quantity) || remainingQty;
     const rawSelectedQty = selectedQuantities[bundleId] || 1;
     const claimQty = Math.max(1, Math.min(rawSelectedQty, remainingQty));
 
-    const pricePerUnit = bundle.price_per_item ?? bundle.price ?? 0;
-    const bulkTotalPrice = bundle.price ?? 0;
+    const pricePerUnit = Number(bundle.price_per_item ?? bundle.price ?? 0);
+    const rawBulkPrice = Number(bundle.bulk_discount_price ?? bundle.total_price ?? bundle.price ?? 0);
 
-    const isFullBatch = claimQty === remainingQty;
+    const isFullRemainingBatch = claimQty === remainingQty;
+    const isOriginalBatchIntact = remainingQty === originalQty;
+
+    // Bulk discount applies ONLY IF 100% of original batch is intact AND full remaining batch is selected
     const hasBulkDiscount =
-      isFullBatch && bulkTotalPrice > 0 && bulkTotalPrice < claimQty * pricePerUnit;
+      isOriginalBatchIntact &&
+      isFullRemainingBatch &&
+      rawBulkPrice > 0 &&
+      pricePerUnit > 0 &&
+      rawBulkPrice < originalQty * pricePerUnit;
 
-    const totalPrice = hasBulkDiscount ? bulkTotalPrice : claimQty * pricePerUnit;
+    const totalPrice = hasBulkDiscount ? rawBulkPrice : claimQty * pricePerUnit;
 
     // 💰 Calculate 10% Platform Fee and 90% Donor Payout
     const platformFee = totalPrice > 0 ? totalPrice * 0.10 : 0;
@@ -357,16 +372,31 @@ export default function SingleRestaurantPage() {
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {bundles.map((bundle) => {
-                const remainingQty = Number(bundle.quantity_remaining) || 1;
+                const remainingQty =
+                  Number(
+                    bundle.quantity_remaining !== null && bundle.quantity_remaining !== undefined
+                      ? bundle.quantity_remaining
+                      : bundle.quantity
+                  ) || 1;
+                const originalQty = Number(bundle.quantity) || remainingQty;
+
                 const selectedQty = Math.max(1, Math.min(selectedQuantities[bundle.id] ?? 1, remainingQty));
-                const pricePerUnit = bundle.price_per_item ?? bundle.price ?? 0;
-                const bulkTotalPrice = bundle.price ?? 0;
+                const pricePerUnit = Number(bundle.price_per_item ?? bundle.price ?? 0);
+                const rawBulkPrice = Number(bundle.bulk_discount_price ?? bundle.total_price ?? bundle.price ?? 0);
 
-                const isFullBatchSelected = selectedQty === remainingQty;
-                const hasBulkDiscount =
-                  isFullBatchSelected && bulkTotalPrice > 0 && bulkTotalPrice < selectedQty * pricePerUnit;
+                const isFullRemainingBatchSelected = selectedQty === remainingQty;
+                const isOriginalBatchIntact = remainingQty === originalQty;
 
-                const calculatedTotal = hasBulkDiscount ? bulkTotalPrice : selectedQty * pricePerUnit;
+                // Bulk deal is valid ONLY IF 100% of original batch is intact
+                const hasBulkDiscountDeal =
+                  isOriginalBatchIntact &&
+                  rawBulkPrice > 0 &&
+                  pricePerUnit > 0 &&
+                  rawBulkPrice < originalQty * pricePerUnit;
+
+                const hasBulkDiscountApplied = isFullRemainingBatchSelected && hasBulkDiscountDeal;
+
+                const calculatedTotal = hasBulkDiscountApplied ? rawBulkPrice : selectedQty * pricePerUnit;
 
                 return (
                   <div
@@ -390,9 +420,10 @@ export default function SingleRestaurantPage() {
                             {pricePerUnit === 0 ? '🎁 FREE' : `₹${pricePerUnit} / item`}
                           </span>
 
-                          {bulkTotalPrice > 0 && bulkTotalPrice < remainingQty * pricePerUnit && (
+                          {/* Deal badge displays ONLY IF 100% of original batch is intact */}
+                          {hasBulkDiscountDeal && (
                             <div className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-md">
-                              All {remainingQty} for ₹{bulkTotalPrice} Deal
+                              All {originalQty} for ₹{rawBulkPrice} Deal
                             </div>
                           )}
                         </div>
@@ -403,17 +434,19 @@ export default function SingleRestaurantPage() {
                         {bundle.description || 'Fresh surplus food prepared with quality standards.'}
                       </p>
 
-                      <div className="pt-3 border-t border-slate-100 text-xs text-slate-500 flex items-center gap-2">
-                        <Clock className="w-4 h-4 text-amber-600 flex-shrink-0" />
-                        <span>
-                          Pickup ends:{' '}
-                          {new Date(bundle.pickup_window_end).toLocaleTimeString([], {
-                            hour: '2-digit',
-                            minute: '2-digit',
-                            hour12: true,
-                          })}
-                        </span>
-                      </div>
+                      {(bundle.pickup_window_end || bundle.expires_at) && (
+                        <div className="pt-3 border-t border-slate-100 text-xs text-slate-500 flex items-center gap-2">
+                          <Clock className="w-4 h-4 text-amber-600 flex-shrink-0" />
+                          <span>
+                            Pickup ends:{' '}
+                            {new Date(bundle.pickup_window_end || bundle.expires_at).toLocaleTimeString([], {
+                              hour: '2-digit',
+                              minute: '2-digit',
+                              hour12: true,
+                            })}
+                          </span>
+                        </div>
+                      )}
                     </div>
 
                     {/* Quantity Selection Bar & Dynamic Claim Button */}
@@ -460,7 +493,7 @@ export default function SingleRestaurantPage() {
                         {claimingId === bundle.id
                           ? 'Reserving...'
                           : calculatedTotal > 0
-                          ? hasBulkDiscount
+                          ? hasBulkDiscountApplied
                             ? `💥 Claim All ${selectedQty} for ₹${calculatedTotal} (Bulk Discount!)`
                             : `Claim ${selectedQty} item(s) for ₹${calculatedTotal}`
                           : `Claim ${selectedQty} Free Item(s)`}

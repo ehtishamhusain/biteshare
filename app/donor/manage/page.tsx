@@ -15,6 +15,8 @@ import {
   X,
   ShieldCheck,
   Utensils,
+  Clock,
+  XCircle,
 } from 'lucide-react';
 
 export default function DonorManagePickupsPage() {
@@ -63,10 +65,10 @@ export default function DonorManagePickupsPage() {
       return;
     }
 
-    // 1. Fetch ALL food bundles published by this donor (regardless of AVAILABLE or CLAIMED status)
+    // 1. Fetch ALL food bundles published by this donor
     const { data: donorBundles, error: bundleError } = await supabase
       .from('food_bundles')
-      .select('id, title, address, status')
+      .select('id, title, address, status, pickup_window_end, expires_at')
       .eq('donor_id', user.id);
 
     if (bundleError || !donorBundles || donorBundles.length === 0) {
@@ -106,14 +108,43 @@ export default function DonorManagePickupsPage() {
       }
     }
 
-    // Combine claims with bundle & recipient info
-    const formattedClaims = claimsData.map((claim) => ({
-      ...claim,
-      bundle: bundleMap[claim.bundle_id] || { title: 'Surplus Food Bundle' },
-      recipient: profileMap[claim.recipient_id] || { full_name: 'Community Recipient' },
-    }));
+    const nowTime = new Date().getTime();
+    const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000; // 24 Hours in milliseconds
 
-    setClaims(formattedClaims);
+    // 4. Combine claims, calculate expiration, and filter out cards older than 24 hours
+    const processedClaims = claimsData
+      .map((claim) => {
+        const bundle = bundleMap[claim.bundle_id] || { title: 'Surplus Food Bundle' };
+        const recipient = profileMap[claim.recipient_id] || { full_name: 'Community Recipient' };
+
+        const isCompleted = claim.status === 'COMPLETED';
+        const pickupDeadline = bundle.pickup_window_end || bundle.expires_at;
+
+        const isDeadlinePassed = pickupDeadline
+          ? new Date(pickupDeadline).getTime() < nowTime
+          : false;
+
+        // Order is EXPIRED if not completed AND deadline has passed (or marked EXPIRED)
+        const isExpired = !isCompleted && (claim.status === 'EXPIRED' || isDeadlinePassed);
+
+        // Calculate card age from creation time
+        const claimTime = new Date(claim.created_at).getTime();
+        const ageMs = nowTime - claimTime;
+        const isOlderThan24Hours = ageMs > TWENTY_FOUR_HOURS_MS;
+
+        return {
+          ...claim,
+          bundle,
+          recipient,
+          isCompleted,
+          isExpired,
+          isOlderThan24Hours,
+        };
+      })
+      // ⚡ FILTER: Remove cards older than 24 hours from /manage view
+      .filter((c) => !c.isOlderThan24Hours);
+
+    setClaims(processedClaims);
     setLoading(false);
   };
 
@@ -174,7 +205,7 @@ export default function DonorManagePickupsPage() {
   });
 
   return (
-    <div className="min-h-screen bg-slate-50 py-8 px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen bg-slate-50 py-8 px-4 sm:px-6 lg:px-8 font-sans">
       <div className="max-w-6xl mx-auto space-y-6">
         {/* Header */}
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-6 rounded-3xl border border-slate-200 shadow-xs">
@@ -186,15 +217,15 @@ export default function DonorManagePickupsPage() {
               Manage Store Pickups
             </h1>
             <p className="text-slate-500 text-xs sm:text-sm mt-1">
-              Ask the recipient for their 4-digit PIN upon arrival to verify order handover and collect payout.
+              Verify customer PINs at the counter. Expired uncollected orders are automatically purged after 24 hours.
             </p>
           </div>
 
           <button
             onClick={fetchDonorClaims}
-            className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-800 font-extrabold text-xs rounded-xl transition flex items-center gap-2"
+            className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-800 font-extrabold text-xs rounded-xl transition flex items-center gap-2 shrink-0"
           >
-            <RefreshCw className="w-4 h-4 text-emerald-600" />
+            <RefreshCw className={`w-4 h-4 text-emerald-600 ${loading ? 'animate-spin' : ''}`} />
             <span>Refresh Orders</span>
           </button>
         </div>
@@ -222,22 +253,28 @@ export default function DonorManagePickupsPage() {
         ) : filteredClaims.length === 0 ? (
           <div className="bg-white rounded-3xl p-12 text-center border border-slate-200 shadow-xs space-y-3">
             <Utensils className="w-12 h-12 text-slate-300 mx-auto" />
-            <h3 className="text-lg font-bold text-slate-800">No pickup reservations found</h3>
-            <p className="text-slate-500 text-xs">When recipients reserve food bundles, their 4-digit PIN verification tickets will appear here instantly.</p>
+            <h3 className="text-lg font-bold text-slate-800">No active pickup reservations</h3>
+            <p className="text-slate-500 text-xs">
+              When recipients reserve food bundles, their verification tickets appear here in real time and remain active for 24 hours.
+            </p>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {filteredClaims.map((claim) => {
-              const isCompleted = claim.status === 'COMPLETED';
+              const { isCompleted, isExpired } = claim;
               const recipientName = claim.recipient?.full_name || claim.recipient?.organization_name || 'Community Recipient';
               const price = claim.total_price || 0;
-              const storePayout = claim.donor_payout || price * 0.9;
+              const storePayout = claim.donor_payout || price * 0.88;
 
               return (
                 <div
                   key={claim.id}
                   className={`bg-white rounded-3xl p-6 border shadow-xs transition flex flex-col justify-between space-y-4 ${
-                    isCompleted ? 'border-emerald-200 bg-emerald-50/30' : 'border-slate-200'
+                    isCompleted
+                      ? 'border-emerald-200 bg-emerald-50/30'
+                      : isExpired
+                      ? 'border-red-200 bg-red-50/20'
+                      : 'border-slate-200'
                   }`}
                 >
                   <div className="space-y-3">
@@ -247,11 +284,25 @@ export default function DonorManagePickupsPage() {
                         className={`px-3 py-1 rounded-full text-[11px] font-black uppercase tracking-wider inline-flex items-center gap-1.5 ${
                           isCompleted
                             ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                            : isExpired
+                            ? 'bg-red-100 text-red-800 border border-red-200'
                             : 'bg-amber-100 text-amber-900 border border-amber-200'
                         }`}
                       >
-                        <span className={`w-2 h-2 rounded-full ${isCompleted ? 'bg-emerald-600' : 'bg-amber-500 animate-pulse'}`} />
-                        {isCompleted ? 'Completed' : 'Pending Pickup'}
+                        <span
+                          className={`w-2 h-2 rounded-full ${
+                            isCompleted
+                              ? 'bg-emerald-600'
+                              : isExpired
+                              ? 'bg-red-500'
+                              : 'bg-amber-500 animate-pulse'
+                          }`}
+                        />
+                        {isCompleted
+                          ? 'Completed'
+                          : isExpired
+                          ? 'Expired / Unclaimed'
+                          : 'Pending Pickup'}
                       </span>
 
                       <div className="text-right">
@@ -260,7 +311,7 @@ export default function DonorManagePickupsPage() {
                         </span>
                         {price > 0 && (
                           <span className="block text-[10px] text-emerald-700 font-bold">
-                            Net Payout: ₹{storePayout.toFixed(1)}
+                            Net Payout: ₹{Number(storePayout).toFixed(1)}
                           </span>
                         )}
                       </div>
@@ -287,6 +338,21 @@ export default function DonorManagePickupsPage() {
                         </div>
                       )}
                     </div>
+
+                    {/* Deadline Display */}
+                    {(claim.bundle?.pickup_window_end || claim.bundle?.expires_at) && (
+                      <div className="flex items-center gap-1.5 text-xs text-slate-500 font-medium pt-1">
+                        <Clock className={`w-3.5 h-3.5 ${isExpired ? 'text-red-500' : 'text-amber-600'}`} />
+                        <span className={isExpired ? 'text-red-600 font-bold' : ''}>
+                          {isExpired ? 'Pickup window ended: ' : 'Collect before: '}
+                          {new Date(claim.bundle.pickup_window_end || claim.bundle.expires_at).toLocaleTimeString([], {
+                            hour: '2-digit',
+                            minute: '2-digit',
+                            hour12: true,
+                          })}
+                        </span>
+                      </div>
+                    )}
                   </div>
 
                   {/* Counter Action Button */}
@@ -295,6 +361,11 @@ export default function DonorManagePickupsPage() {
                       <div className="p-3 bg-emerald-100/60 rounded-2xl text-center text-xs font-bold text-emerald-900 flex items-center justify-center gap-2">
                         <CheckCircle2 className="w-4 h-4 text-emerald-600" />
                         <span>Verified & Handed Over</span>
+                      </div>
+                    ) : isExpired ? (
+                      <div className="p-3 bg-red-100/60 rounded-2xl text-center text-xs font-bold text-red-900 flex items-center justify-center gap-2">
+                        <XCircle className="w-4 h-4 text-red-600" />
+                        <span>Pickup Deadline Expired (Uncollected)</span>
                       </div>
                     ) : (
                       <button

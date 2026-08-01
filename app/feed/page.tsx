@@ -3,64 +3,83 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import dynamic from 'next/dynamic';
 import { motion, AnimatePresence, Variants } from 'framer-motion';
 import { supabase } from '@/lib/supabase';
 import {
   Utensils,
   MapPin,
   Clock,
-  Tag,
   RefreshCw,
+  List,
+  Map as MapIcon,
   Sparkles,
+  Flame,
   Building,
   UserPlus,
   LogIn,
   X,
   Lock,
-  Layers,
   Search,
   Filter,
+  CheckCircle2,
+  AlertCircle,
+  IndianRupee,
+  ArrowRight,
 } from 'lucide-react';
 
-const fadeInUp: Variants = {
-  hidden: { opacity: 0, y: 25 },
-  visible: {
-    opacity: 1,
-    y: 0,
-    transition: { duration: 0.5 },
-  },
-};
+// Dynamic import for existing RestaurantMapView component
+const RestaurantMapView = dynamic(
+  () => import('@/components/RestaurantMapView'),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="bg-slate-50 border border-slate-200 rounded-3xl p-12 text-center text-slate-500 font-semibold flex items-center justify-center gap-2">
+        <RefreshCw className="w-5 h-5 animate-spin text-emerald-600" />
+        <span>Loading Restaurant Map...</span>
+      </div>
+    ),
+  }
+);
 
 const staggerContainer: Variants = {
   hidden: { opacity: 0 },
   visible: {
     opacity: 1,
-    transition: { staggerChildren: 0.1 },
+    transition: { staggerChildren: 0.08 },
   },
 };
 
+const fadeInUp: Variants = {
+  hidden: { opacity: 0, y: 15 },
+  visible: {
+    opacity: 1,
+    y: 0,
+    transition: { duration: 0.4 },
+  },
+};
+
+const CATEGORIES = ['All', 'COOKED', 'BAKERY', 'GROCERY', 'FREE'];
+
 export default function FeedPage() {
   const router = useRouter();
+
   const [bundles, setBundles] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [viewMode, setViewMode] = useState<'list' | 'map'>('list');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState('All');
+
+  const [selectedQuantities, setSelectedQuantities] = useState<{ [bundleId: string]: number }>({});
   const [claimingId, setClaimingId] = useState<string | null>(null);
   const [message, setMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
 
-  // 🔍 Real-time Search & Filter States
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState('ALL');
-
-  // 🔢 Track recipient's chosen quantity for each bundle card
-  const [selectedQuantities, setSelectedQuantities] = useState<{ [bundleId: string]: number }>({});
-
-  // 🔐 Guest Auth Modal State
   const [showAuthModal, setShowAuthModal] = useState(false);
 
+  // Redirect Donors to Dashboard
   useEffect(() => {
-    const checkRoleAndRedirect = async () => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+    const checkRole = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
       if (user) {
         const { data: profile } = await supabase
           .from('profiles')
@@ -73,114 +92,195 @@ export default function FeedPage() {
         }
       }
     };
-
-    checkRoleAndRedirect();
+    checkRole();
   }, [router]);
 
+  // Fetch active, non-expired food bundles
   const fetchBundles = async () => {
     setLoading(true);
-
     const nowIso = new Date().toISOString();
+    const nowTime = new Date().getTime();
 
-    // ⚡ Fetch only available items whose expiration time is in the future
-    const { data, error } = await supabase
+    // Database-level filtering: only status AVAILABLE and pickup_window_end in the future
+    const { data: rawBundles, error } = await supabase
       .from('food_bundles')
-      .select('*, donor:profiles(id, organization_name, full_name)')
-      .eq('status', 'AVAILABLE')
-      .gt('expires_at', nowIso)
+      .select('*')
+      .in('status', ['AVAILABLE', 'available'])
+      .gt('pickup_window_end', nowIso) // ⚡ Filters out expired pickup windows at DB level
       .order('created_at', { ascending: false });
 
-    if (!error && data) {
-      const processedBundles = data
-        .map((bundle) => {
-          const remaining =
-            bundle.quantity_remaining !== null && bundle.quantity_remaining !== undefined
-              ? Number(bundle.quantity_remaining)
-              : Number(bundle.quantity) || 0;
-
-          return {
-            ...bundle,
-            quantity_remaining: remaining,
-          };
-        })
-        .filter((bundle) => bundle.quantity_remaining > 0);
-
-      setBundles(processedBundles);
-
-      const initialQtyMap: { [key: string]: number } = {};
-      processedBundles.forEach((b) => {
-        initialQtyMap[b.id] = 1;
-      });
-      setSelectedQuantities(initialQtyMap);
+    if (error || !rawBundles) {
+      setBundles([]);
+      setLoading(false);
+      return;
     }
+
+    // Fetch donor profile details
+    const donorIds = Array.from(new Set(rawBundles.map((b) => b.donor_id).filter(Boolean)));
+    const donorMap = new Map();
+
+    if (donorIds.length > 0) {
+      const { data: profilesData } = await supabase
+        .from('profiles')
+        .select('id, organization_name, full_name, street_address, city, state, pincode, latitude, longitude, phone')
+        .in('id', donorIds);
+
+      if (profilesData) {
+        profilesData.forEach((p) => donorMap.set(p.id, p));
+      }
+    }
+
+    const processedBundles = rawBundles
+      .map((bundle) => {
+        const remaining =
+          bundle.quantity_remaining !== null && bundle.quantity_remaining !== undefined
+            ? Number(bundle.quantity_remaining)
+            : Number(bundle.quantity) || 0;
+
+        const profile = donorMap.get(bundle.donor_id);
+
+        return {
+          ...bundle,
+          donor: profile || null,
+          quantity_remaining: remaining,
+        };
+      })
+      .filter((bundle) => {
+        // ⚡ Double Client-Side Expiration & Stock Check
+        const expTime = bundle.pickup_window_end || bundle.expires_at;
+        const isNotExpired = expTime ? new Date(expTime).getTime() > nowTime : true;
+        const hasStock = bundle.quantity_remaining > 0;
+
+        return hasStock && isNotExpired;
+      });
+
+    setBundles(processedBundles);
+
+    const initialQtyMap: { [key: string]: number } = {};
+    processedBundles.forEach((b) => {
+      initialQtyMap[b.id] = 1;
+    });
+    setSelectedQuantities(initialQtyMap);
     setLoading(false);
   };
 
   useEffect(() => {
     fetchBundles();
 
+    // Auto-refresh feed every 30 seconds to clean up newly expired items in real time
+    const interval = setInterval(() => {
+      fetchBundles();
+    }, 30000);
+
     const channel = supabase
       .channel('realtime_feed_sync')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'food_bundles' },
-        () => fetchBundles()
-      )
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'claims' },
-        () => fetchBundles()
-      )
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'food_bundles' }, () => fetchBundles())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'claims' }, () => fetchBundles())
       .subscribe();
 
     return () => {
+      clearInterval(interval);
       supabase.removeChannel(channel);
     };
   }, []);
 
-  // 🔍 Real-time Search & Category Filtering Logic
+  // Search & Category Filtering
   const filteredBundles = useMemo(() => {
     const nowTime = new Date().getTime();
 
     return bundles.filter((bundle) => {
-      // Double check client-side expiry
-      if (bundle.expires_at && new Date(bundle.expires_at).getTime() < nowTime) {
+      // Re-verify expiration in real-time
+      const expTime = bundle.pickup_window_end || bundle.expires_at;
+      if (expTime && new Date(expTime).getTime() <= nowTime) {
         return false;
       }
 
-      const query = searchQuery.toLowerCase().trim();
-      const businessName = (
+      // Inside filteredBundles map logic:
+      const restaurantName =
+        bundle.restaurant_name ||
+        bundle.donor?.organization_name ||
+        bundle.donor?.full_name ||
+        'BiteShare Partner Store';
+
+      const donorName = (
+        bundle.restaurant_name ||
         bundle.donor?.organization_name ||
         bundle.donor?.full_name ||
         ''
       ).toLowerCase();
+      const title = (bundle.title || '').toLowerCase();
+      const description = (bundle.description || '').toLowerCase();
+      const address = (bundle.address || bundle.donor?.street_address || '').toLowerCase();
+      const category = (bundle.category || '').toLowerCase();
+      const query = searchQuery.trim().toLowerCase();
 
       const matchesSearch =
         query === '' ||
-        (bundle.title && bundle.title.toLowerCase().includes(query)) ||
-        (bundle.description && bundle.description.toLowerCase().includes(query)) ||
-        (bundle.address && bundle.address.toLowerCase().includes(query)) ||
-        businessName.includes(query);
+        title.includes(query) ||
+        donorName.includes(query) ||
+        description.includes(query) ||
+        address.includes(query) ||
+        category.includes(query);
 
-      const isFree = (bundle.price_per_item ?? bundle.price ?? 0) === 0;
+      const isFreeItem = (Number(bundle.price_per_item) === 0 || Number(bundle.price) === 0);
 
-      const matchesCategory =
-        selectedCategory === 'ALL' ||
-        (selectedCategory === 'FREE' && isFree) ||
-        (bundle.category && bundle.category.toUpperCase() === selectedCategory);
+      let matchesCategory = true;
+      if (selectedCategory === 'Free Items') {
+        matchesCategory = isFreeItem;
+      } else if (selectedCategory !== 'All') {
+        matchesCategory = category === selectedCategory.toLowerCase();
+      }
 
       return matchesSearch && matchesCategory;
     });
   }, [bundles, searchQuery, selectedCategory]);
+
+  // Restaurant Aggregation for RestaurantMapView
+  const restaurantListForMap = useMemo(() => {
+    const restaurantMap = new Map<string, any>();
+
+    filteredBundles.forEach((bundle) => {
+      const donorId = bundle.donor_id || bundle.donor?.id || bundle.address || 'partner-store';
+
+      if (!restaurantMap.has(donorId)) {
+        restaurantMap.set(donorId, {
+          id: donorId,
+          organization_name: bundle.restaurant_name || bundle.donor?.organization_name || bundle.donor?.full_name || 'Partner Food Store',
+          full_name: bundle.donor?.full_name || 'Verified Owner',
+          street_address: bundle.address || bundle.donor?.street_address || '',
+          city: bundle.city || bundle.donor?.city || 'Bareilly',
+          state: bundle.state || bundle.donor?.state || '',
+          pincode: bundle.pincode || bundle.donor?.pincode || '',
+          latitude: bundle.latitude ? Number(bundle.latitude) : bundle.donor?.latitude ? Number(bundle.donor?.latitude) : null,
+          longitude: bundle.longitude ? Number(bundle.longitude) : bundle.donor?.longitude ? Number(bundle.donor?.longitude) : null,
+          active_bundles_count: 0,
+        });
+      }
+
+      const store = restaurantMap.get(donorId);
+      store.active_bundles_count += 1;
+    });
+
+    return Array.from(restaurantMap.values());
+  }, [filteredBundles]);
+
+  // Quantity selection controls
+  const handleQtyChange = (bundleId: string, delta: number, maxQty: number) => {
+    setSelectedQuantities((prev) => {
+      const current = prev[bundleId] || 1;
+      const nextVal = Math.min(Math.max(1, current + delta), maxQty);
+      return { ...prev, [bundleId]: nextVal };
+    });
+  };
 
   const handleDirectQtyChange = (bundleId: string, inputVal: string, maxQty: number) => {
     if (inputVal === '') {
       setSelectedQuantities((prev) => ({ ...prev, [bundleId]: 0 }));
       return;
     }
-
     let parsed = parseInt(inputVal, 10);
     if (isNaN(parsed)) parsed = 1;
+    if (parsed < 1) parsed = 1;
     if (parsed > maxQty) parsed = maxQty;
 
     setSelectedQuantities((prev) => ({ ...prev, [bundleId]: parsed }));
@@ -190,31 +290,14 @@ export default function FeedPage() {
     setSelectedQuantities((prev) => ({ ...prev, [bundleId]: maxQty }));
   };
 
+  // Claim logic
   const handleClaim = async (bundle: any) => {
+    if (!bundle) return;
     const bundleId = bundle.id;
-    const remainingQty = bundle.quantity_remaining;
-    const rawSelectedQty = selectedQuantities[bundleId] || 1;
-    const claimQty = Math.max(1, Math.min(rawSelectedQty, remainingQty));
-
-    const pricePerUnit = bundle.price_per_item ?? bundle.price ?? 0;
-    const bulkTotalPrice = bundle.price ?? 0;
-
-    const isFullBatch = claimQty === remainingQty;
-    const hasBulkDiscount =
-      isFullBatch && bulkTotalPrice > 0 && bulkTotalPrice < claimQty * pricePerUnit;
-
-    const totalPrice = hasBulkDiscount ? bulkTotalPrice : claimQty * pricePerUnit;
-
-    // 💰 Calculate 10% BiteShare Platform Fee and 90% Store Payout
-    const platformFee = totalPrice > 0 ? totalPrice * 0.10 : 0;
-    const donorPayout = totalPrice > 0 ? totalPrice * 0.90 : 0;
-
     setClaimingId(bundleId);
     setMessage(null);
 
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
+    const { data: { user } } = await supabase.auth.getUser();
 
     if (!user) {
       setShowAuthModal(true);
@@ -229,33 +312,63 @@ export default function FeedPage() {
       .maybeSingle();
 
     if (profile?.role === 'DONOR') {
-      setMessage({ text: 'Donor accounts cannot claim food bundles.', type: 'error' });
+      setMessage({ text: 'Donor accounts cannot claim surplus food bundles.', type: 'error' });
       setClaimingId(null);
       return;
     }
 
-    // Generate random 4-digit PIN
+    const remainingQty = Number(bundle.quantity_remaining) || 0;
+    const originalQty = Number(bundle.quantity) || remainingQty;
+    const claimQty = selectedQuantities[bundleId] || 1;
+
+    if (claimQty <= 0 || claimQty > remainingQty) {
+      setMessage({ text: 'Please select a valid claim quantity.', type: 'error' });
+      setClaimingId(null);
+      return;
+    }
+
+    const pricePerUnit = Number(bundle.price_per_item) || Number(bundle.price) || 0;
+    const standardCostForSelected = claimQty * pricePerUnit;
+
+    const rawBulkPrice = Number(bundle.bulk_discount_price || bundle.total_price);
+    const standardCostForRemainingStock = remainingQty * pricePerUnit;
+
+    const isFullRemainingBatchSelected = claimQty === remainingQty;
+    const isEntireOriginalBatchIntact = remainingQty === originalQty;
+
+    const hasValidBulkDiscount =
+      isEntireOriginalBatchIntact &&
+      pricePerUnit > 0 &&
+      !isNaN(rawBulkPrice) &&
+      rawBulkPrice > 0 &&
+      rawBulkPrice < standardCostForRemainingStock;
+
+    const totalPrice = isFullRemainingBatchSelected && hasValidBulkDiscount ? rawBulkPrice : standardCostForSelected;
+
+    // 12% Platform Fee & 88% Donor Payout
+    const platformFee = totalPrice > 0 ? totalPrice * 0.12 : 0;
+    const donorPayout = totalPrice > 0 ? totalPrice * 0.88 : 0;
+
+    // 4-digit PIN
     const generatedPin = Math.floor(1000 + Math.random() * 9000).toString();
 
-    // 1. Insert claim record with financial commission breakdown
     const { error: claimError } = await supabase.from('claims').insert({
       bundle_id: bundleId,
       recipient_id: user.id,
       claimed_quantity: claimQty,
       total_price: totalPrice,
-      platform_fee: platformFee,   // ⚡ 10% Platform Commission
-      donor_payout: donorPayout,   // ⚡ 90% Net Donor Payout
+      platform_fee: platformFee,
+      donor_payout: donorPayout,
       pickup_pin: generatedPin,
       status: 'PENDING',
     });
 
     if (claimError) {
-      setMessage({ text: 'Failed to claim bundle: ' + claimError.message, type: 'error' });
+      setMessage({ text: 'Failed to reserve bundle: ' + claimError.message, type: 'error' });
       setClaimingId(null);
       return;
     }
 
-    // 2. Update food_bundles remaining stock
     const newRemaining = remainingQty - claimQty;
     const newStatus = newRemaining <= 0 ? 'CLAIMED' : 'AVAILABLE';
 
@@ -267,362 +380,435 @@ export default function FeedPage() {
       })
       .eq('id', bundleId);
 
-    setMessage({
-      text: `🎉 Reserved ${claimQty} item(s) for ₹${totalPrice}! PIN: ${generatedPin}. Check "My Claims" for details.`,
-      type: 'success',
-    });
-
+    setMessage({ text: `🎉 Reserved ${claimQty} item(s) successfully! PIN: ${generatedPin}. Check "My Claims".`, type: 'success' });
     fetchBundles();
     setClaimingId(null);
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 py-8 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-7xl mx-auto space-y-6">
-        {/* Header Banner */}
-        <motion.div
-          initial={{ opacity: 0, y: -20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6 }}
-          className="bg-gradient-to-r from-emerald-600 to-teal-700 rounded-3xl p-6 sm:p-8 text-white shadow-xl relative overflow-hidden"
-        >
-          <div className="relative z-10 space-y-2">
-            <div className="inline-flex items-center gap-2 bg-emerald-500/30 backdrop-blur-md border border-emerald-400/30 px-3.5 py-1 rounded-full text-xs font-bold uppercase tracking-wider">
-              <Sparkles className="w-3.5 h-3.5 text-emerald-200" /> Realtime Live Feed
-            </div>
-            <h1 className="text-2xl sm:text-3xl font-extrabold">Active Surplus Food Near You</h1>
-            <p className="text-emerald-100 text-sm sm:text-base">
-              Enter your required quantity or claim all available items at once.
-            </p>
-          </div>
-        </motion.div>
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8 font-sans">
+      {/* Header Banner */}
+      <motion.div
+        initial={{ opacity: 0, y: -20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5 }}
+        className="bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 rounded-3xl p-6 sm:p-10 text-white shadow-xl relative overflow-hidden"
+      >
+        <div className="absolute top-0 right-0 -mt-8 -mr-8 w-64 h-64 bg-white/10 rounded-full blur-2xl pointer-events-none" />
 
-        {/* 🔍 REAL-TIME SEARCH & FILTER BAR */}
-        <div className="bg-white rounded-3xl p-4 sm:p-6 border border-slate-200 shadow-sm space-y-4">
-          <div className="relative">
-            <Search className="w-5 h-5 absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
+        <div className="relative z-10 space-y-3">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/20 backdrop-blur-md text-xs font-bold uppercase tracking-wider">
+            <span className="w-2 h-2 rounded-full bg-emerald-300 animate-ping" />
+            Live Marketplace Feed
+          </div>
+          <h1 className="text-3xl sm:text-5xl font-black tracking-tight">
+            Explore Active Surplus Food
+          </h1>
+          <p className="text-emerald-100 text-sm sm:text-base max-w-2xl leading-relaxed">
+            Reserve fresh meals, baked goods, and groceries from local partners at deep discounts or for free.
+          </p>
+        </div>
+      </motion.div>
+
+      {/* Search & Category Filter Controls */}
+      <div className="space-y-4">
+        <div className="flex flex-col md:flex-row items-center justify-between gap-4">
+          <div className="relative w-full md:w-96">
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
             <input
               type="text"
+              placeholder="Search items, restaurants, locations..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search by food item (e.g. Biryani, Muffins), Restaurant, or Location..."
-              className="w-full pl-12 pr-10 py-3.5 rounded-2xl border border-slate-200 focus:ring-2 focus:ring-emerald-500 outline-none text-sm text-slate-800 bg-slate-50/50"
+              className="w-full pl-11 pr-10 py-3 bg-white border border-slate-200 rounded-2xl text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent shadow-xs transition"
             />
             {searchQuery && (
               <button
                 onClick={() => setSearchQuery('')}
-                className="absolute right-3.5 top-1/2 -translate-y-1/2 p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-200/60 transition"
+                className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600 rounded-full"
               >
                 <X className="w-4 h-4" />
               </button>
             )}
           </div>
 
-          <div className="flex items-center gap-2 overflow-x-auto pb-1 text-xs no-scrollbar">
-            <div className="flex items-center gap-1.5 text-slate-400 font-bold uppercase tracking-wider pr-2 border-r border-slate-200">
-              <Filter className="w-3.5 h-3.5 text-emerald-600" />
-              <span>Category:</span>
-            </div>
-
-            {[
-              { key: 'ALL', label: 'All Items' },
-              { key: 'COOKED', label: '🍲 Cooked Meals' },
-              { key: 'BAKERY', label: '🥖 Bakery & Snacks' },
-              { key: 'GROCERY', label: '🍎 Groceries' },
-              { key: 'FREE', label: '🎁 100% Free' },
-            ].map((cat) => (
-              <button
-                key={cat.key}
-                onClick={() => setSelectedCategory(cat.key)}
-                className={`px-3.5 py-2 rounded-xl font-bold whitespace-nowrap transition ${
-                  selectedCategory === cat.key
-                    ? 'bg-emerald-600 text-white shadow-sm'
-                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200/70'
+          <div className="flex items-center gap-1.5 p-1.5 bg-slate-100 rounded-2xl border border-slate-200 w-full md:w-auto justify-center">
+            <button
+              onClick={() => setViewMode('list')}
+              className={`flex-1 md:flex-none px-5 py-2 rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 ${viewMode === 'list'
+                  ? 'bg-white text-slate-900 shadow-sm'
+                  : 'text-slate-600 hover:text-slate-900'
                 }`}
-              >
-                {cat.label}
-              </button>
-            ))}
+            >
+              <List className="w-4 h-4 text-emerald-600" />
+              List View
+            </button>
+            <button
+              onClick={() => setViewMode('map')}
+              className={`flex-1 md:flex-none px-5 py-2 rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 ${viewMode === 'map'
+                  ? 'bg-white text-slate-900 shadow-sm'
+                  : 'text-slate-600 hover:text-slate-900'
+                }`}
+            >
+              <MapIcon className="w-4 h-4 text-emerald-600" />
+              Map View
+            </button>
           </div>
-
-          {(searchQuery || selectedCategory !== 'ALL') && (
-            <div className="flex items-center justify-between pt-2 border-t border-slate-100 text-xs text-slate-500">
-              <span>
-                Showing <strong className="text-slate-900">{filteredBundles.length}</strong> available listings
-                {searchQuery && <> for "<strong>{searchQuery}</strong>"</>}
-              </span>
-              <button
-                onClick={() => {
-                  setSearchQuery('');
-                  setSelectedCategory('ALL');
-                }}
-                className="text-emerald-600 font-bold hover:underline"
-              >
-                Reset Search Filters
-              </button>
-            </div>
-          )}
         </div>
 
-        {message && (
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className={`p-4 rounded-2xl font-semibold text-sm border shadow-sm ${
-              message.type === 'success'
-                ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                : 'bg-red-50 text-red-800 border-red-200'
+        <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-none">
+          <Filter className="w-4 h-4 text-slate-400 shrink-0 mr-1" />
+          {CATEGORIES.map((cat) => (
+            <button
+              key={cat}
+              onClick={() => setSelectedCategory(cat)}
+              className={`px-4 py-2 rounded-xl text-xs font-extrabold whitespace-nowrap transition border ${selectedCategory === cat
+                  ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm'
+                  : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                }`}
+            >
+              {cat}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {message && (
+        <motion.div
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className={`p-4 rounded-2xl font-semibold text-sm border shadow-xs flex items-center gap-2 ${message.type === 'success'
+              ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+              : 'bg-red-50 text-red-800 border-red-200'
             }`}
-          >
-            {message.text}
-          </motion.div>
-        )}
+        >
+          {message.type === 'success' ? (
+            <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+          ) : (
+            <AlertCircle className="w-5 h-5 text-red-600 shrink-0" />
+          )}
+          <span>{message.text}</span>
+        </motion.div>
+      )}
 
-        {/* Food Listings Grid */}
-        {loading ? (
-          <div className="flex flex-col items-center justify-center py-16 text-slate-500">
-            <RefreshCw className="w-8 h-8 animate-spin text-emerald-600 mb-3" />
-            <p className="text-sm font-medium">Loading live surplus food listings...</p>
+      {/* View Switcher: List vs Restaurant Map */}
+      {viewMode === 'map' ? (
+        <RestaurantMapView restaurants={restaurantListForMap} />
+      ) : loading ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {[1, 2, 3, 4, 5, 6].map((i) => (
+            <div
+              key={i}
+              className="h-80 bg-white border border-slate-200 rounded-3xl animate-pulse p-6 space-y-4"
+            >
+              <div className="h-6 bg-slate-100 rounded-xl w-3/4" />
+              <div className="h-4 bg-slate-100 rounded-xl w-1/2" />
+              <div className="h-20 bg-slate-100 rounded-2xl w-full" />
+              <div className="h-10 bg-slate-100 rounded-xl w-full" />
+            </div>
+          ))}
+        </div>
+      ) : filteredBundles.length === 0 ? (
+        <div className="bg-white border border-slate-200 rounded-3xl p-12 text-center space-y-4 max-w-md mx-auto shadow-xs">
+          <div className="w-16 h-16 bg-emerald-50 text-emerald-600 rounded-full flex items-center justify-center mx-auto">
+            <Utensils className="w-8 h-8" />
           </div>
-        ) : filteredBundles.length === 0 ? (
-          <div className="bg-white rounded-3xl p-12 text-center border border-slate-200 shadow-sm max-w-lg mx-auto space-y-3">
-            <Utensils className="w-12 h-12 text-slate-300 mx-auto" />
-            <h3 className="text-lg font-bold text-slate-800">
-              {searchQuery || selectedCategory !== 'ALL' ? 'No matching food items found' : 'No active food bundles found'}
-            </h3>
-            <p className="text-slate-500 text-sm">
-              {searchQuery || selectedCategory !== 'ALL'
-                ? `Try adjusting your search query "${searchQuery}" or category filter.`
-                : 'Check back shortly! New surplus food listings appear here automatically in real time.'}
-            </p>
-            {(searchQuery || selectedCategory !== 'ALL') && (
-              <button
-                onClick={() => {
-                  setSearchQuery('');
-                  setSelectedCategory('ALL');
-                }}
-                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl transition mt-2"
+          <h3 className="text-xl font-black text-slate-900">No active listings found</h3>
+          <p className="text-slate-600 text-sm">
+            {searchQuery || selectedCategory !== 'All'
+              ? 'Try adjusting your search terms or category filters.'
+              : 'Check back shortly! New surplus food offerings appear here automatically in real time.'}
+          </p>
+          {(searchQuery || selectedCategory !== 'All') && (
+            <button
+              onClick={() => {
+                setSearchQuery('');
+                setSelectedCategory('All');
+              }}
+              className="px-5 py-2.5 bg-emerald-600 text-white font-bold text-xs rounded-xl hover:bg-emerald-700 transition"
+            >
+              Reset Search & Filters
+            </button>
+          )}
+        </div>
+      ) : (
+        <motion.div
+          className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
+          initial="hidden"
+          animate="visible"
+          variants={staggerContainer}
+        >
+          {filteredBundles.map((bundle) => {
+            const restaurantName =
+              bundle.restaurant_name ||
+              bundle.donor?.organization_name?.trim() ||
+              bundle.donor?.full_name?.trim() ||
+              'Partner Restaurant';
+
+            const remainingQty = bundle.quantity_remaining;
+            const originalQty = Number(bundle.quantity) || remainingQty;
+            const pricePerUnit = Number(bundle.price_per_item) || Number(bundle.price) || 0;
+            const isFree = pricePerUnit === 0;
+
+            const currentClaimQty = selectedQuantities[bundle.id] || 1;
+            const standardCostForSelected = currentClaimQty * pricePerUnit;
+
+            const standardCostForRemainingStock = remainingQty * pricePerUnit;
+            const rawBulkPrice = Number(bundle.bulk_discount_price || bundle.total_price);
+
+            const isFullRemainingBatchSelected = currentClaimQty === remainingQty;
+            const isEntireOriginalBatchIntact = remainingQty === originalQty;
+
+            const hasValidBulkDiscount =
+              isEntireOriginalBatchIntact &&
+              pricePerUnit > 0 &&
+              !isNaN(rawBulkPrice) &&
+              rawBulkPrice > 0 &&
+              rawBulkPrice < standardCostForRemainingStock;
+
+            const discountPercent = hasValidBulkDiscount
+              ? Math.round(((standardCostForRemainingStock - rawBulkPrice) / standardCostForRemainingStock) * 100)
+              : 0;
+
+            const isBulkAppliedForCurrentSelection = isFullRemainingBatchSelected && hasValidBulkDiscount;
+
+            const finalCalculatedPrice = isBulkAppliedForCurrentSelection
+              ? rawBulkPrice
+              : standardCostForSelected;
+
+            return (
+              <motion.div
+                key={bundle.id}
+                variants={fadeInUp}
+                whileHover={{ y: -5 }}
+                className="bg-white rounded-3xl border border-slate-200/80 p-6 shadow-xs flex flex-col justify-between space-y-5 hover:shadow-xl hover:border-emerald-200 transition-all duration-300 relative overflow-hidden group"
               >
-                Clear Search & Show All
-              </button>
-            )}
-          </div>
-        ) : (
-          <motion.div
-            className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
-            initial="hidden"
-            animate="visible"
-            variants={staggerContainer}
-          >
-            {filteredBundles.map((bundle) => {
-              const businessName =
-                bundle.donor?.organization_name ||
-                bundle.donor?.full_name ||
-                'Local Food Business';
+                <div className="absolute top-0 left-0 right-0 h-1.5 bg-emerald-500 opacity-0 group-hover:opacity-100 transition-opacity" />
 
-              const donorId = bundle.donor_id || bundle.donor?.id;
-
-              const remainingQty = bundle.quantity_remaining;
-              const selectedQty = Math.max(1, Math.min(selectedQuantities[bundle.id] ?? 1, remainingQty));
-              const pricePerUnit = bundle.price_per_item ?? bundle.price ?? 0;
-              const bulkTotalPrice = bundle.price ?? 0;
-
-              const isFullBatchSelected = selectedQty === remainingQty;
-              const hasBulkDiscount =
-                isFullBatchSelected && bulkTotalPrice > 0 && bulkTotalPrice < selectedQty * pricePerUnit;
-
-              const calculatedTotal = hasBulkDiscount ? bulkTotalPrice : selectedQty * pricePerUnit;
-
-              return (
-                <motion.div
-                  key={bundle.id}
-                  variants={fadeInUp}
-                  whileHover={{ y: -4 }}
-                  className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm hover:shadow-md transition flex flex-col justify-between"
-                >
-                  <div className="p-6 space-y-3">
-                    <div className="flex justify-between items-start">
-                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-emerald-100 text-emerald-800 border border-emerald-200">
-                        <Tag className="w-3.5 h-3.5" /> {remainingQty} Servings Left
+                <div className="space-y-4">
+                  {/* Top Badges Row */}
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="px-3 py-1 bg-slate-100 text-slate-700 text-[11px] font-black uppercase tracking-wider rounded-full border border-slate-200">
+                        {bundle.category || 'Surplus Food'}
                       </span>
 
-                      <div className="text-right space-y-1">
-                        <span
-                          className={`font-black text-sm sm:text-base px-2.5 py-0.5 rounded-lg border inline-block ${
-                            pricePerUnit === 0
-                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                              : 'bg-slate-100 text-slate-800 border-slate-200'
-                          }`}
-                        >
-                          {pricePerUnit === 0 ? '🎁 FREE' : `₹${pricePerUnit} / item`}
+                      {hasValidBulkDiscount && (
+                        <span className="px-2.5 py-1 bg-gradient-to-r from-amber-500 to-orange-500 text-white text-[11px] font-black uppercase tracking-wider rounded-full shadow-xs flex items-center gap-1 animate-pulse">
+                          <Flame className="w-3.5 h-3.5 fill-amber-100" />
+                          <span>SAVE {discountPercent}% ON FULL BATCH</span>
                         </span>
-
-                        {bulkTotalPrice > 0 && bulkTotalPrice < remainingQty * pricePerUnit && (
-                          <div className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-md">
-                            All {remainingQty} for ₹{bulkTotalPrice} Deal
-                          </div>
-                        )}
-                      </div>
+                      )}
                     </div>
 
-                    {/* 🏬 Clickable Restaurant / Business Name Header */}
-                    {donorId ? (
-                      <Link
-                        href={`/restaurants/${donorId}`}
-                        className="inline-flex items-center gap-1.5 text-xs font-extrabold text-emerald-700 hover:text-emerald-800 hover:underline transition cursor-pointer group"
-                      >
-                        <Building className="w-3.5 h-3.5 text-emerald-600 group-hover:scale-110 transition-transform" />
-                        <span>{businessName}</span>
-                      </Link>
+                    {isFree ? (
+                      <span className="px-3 py-1 bg-emerald-100 text-emerald-800 text-xs font-black uppercase tracking-wider rounded-full border border-emerald-200">
+                        🎁 FREE
+                      </span>
                     ) : (
-                      <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-700">
-                        <Building className="w-3.5 h-3.5" />
-                        <span>{businessName}</span>
-                      </div>
+                      <span className="px-3 py-1 bg-emerald-50 text-emerald-800 text-xs font-black rounded-full border border-emerald-200 flex items-center gap-1">
+                        <IndianRupee className="w-3 h-3 text-emerald-600" />
+                        <span>₹{pricePerUnit}/item</span>
+                      </span>
                     )}
-
-                    <h3 className="text-lg font-bold text-slate-900">{bundle.title}</h3>
-                    <p className="text-slate-600 text-sm line-clamp-2">
-                      {bundle.description || 'Fresh surplus food available for pickup.'}
-                    </p>
-
-                    <div className="space-y-2 pt-3 border-t border-slate-100 text-xs text-slate-500">
-                      <div className="flex items-start gap-2">
-                        <MapPin className="w-4 h-4 text-emerald-600 flex-shrink-0 mt-0.5" />
-                        <span className="line-clamp-2">
-                          {bundle.address || 'Pickup address provided upon reservation'}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Clock className="w-4 h-4 text-amber-600 flex-shrink-0" />
-                        <span>
-                          Closes:{' '}
-                          {new Date(bundle.pickup_window_end).toLocaleTimeString([], {
-                            hour: '2-digit',
-                            minute: '2-digit',
-                            hour12: true,
-                          })}
-                        </span>
-                      </div>
-                    </div>
                   </div>
 
-                  <div className="p-4 bg-slate-50 border-t border-slate-100 space-y-3">
-                    <div className="flex items-center justify-between bg-white px-3.5 py-2.5 rounded-2xl border border-slate-200 shadow-sm">
-                      <div className="flex flex-col">
-                        <span className="text-xs font-bold text-slate-700 flex items-center gap-1">
-                          <Layers className="w-3.5 h-3.5 text-emerald-600" />
-                          <span>Quantity</span>
-                        </span>
-                        <span className="text-[10px] text-slate-500 font-semibold">
-                          Available: <span className="font-extrabold text-emerald-700">{remainingQty} items</span>
+                  {/* Title & Restaurant Name Badge */}
+                  <div className="space-y-1.5">
+                    <h2 className="text-xl font-black text-slate-900 leading-snug group-hover:text-emerald-700 transition-colors">
+                      {bundle.title}
+                    </h2>
+
+                    <Link
+                      href={`/restaurants/${bundle.donor_id || bundle.donor?.id}`}
+                      className="inline-flex items-center gap-1.5 text-xs font-extrabold text-emerald-700 hover:text-emerald-800 bg-emerald-50/80 hover:bg-emerald-100 px-3 py-1 rounded-xl border border-emerald-200/60 transition"
+                    >
+                      <Building className="w-3.5 h-3.5 shrink-0 text-emerald-600" />
+                      <span className="truncate max-w-[220px]">{restaurantName}</span>
+                    </Link>
+                  </div>
+
+                  {bundle.description && (
+                    <p className="text-slate-600 text-xs leading-relaxed line-clamp-2">
+                      {bundle.description}
+                    </p>
+                  )}
+
+                  {/* Address & Window End */}
+                  <div className="space-y-2 pt-2 border-t border-slate-100 text-xs text-slate-600 font-medium">
+                    <div className="flex items-center gap-2">
+                      <MapPin className="w-4 h-4 text-emerald-600 shrink-0" />
+                      <span className="truncate">
+                        {bundle.address || bundle.donor?.street_address || 'Partner Store Location'}
+                      </span>
+                    </div>
+
+                    {bundle.pickup_window_end && (
+                      <div className="flex items-center gap-2">
+                        <Clock className="w-4 h-4 text-amber-600 shrink-0" />
+                        <span>
+                          Collect before:{' '}
+                          <strong className="text-slate-800">
+                            {new Date(bundle.pickup_window_end).toLocaleTimeString([], {
+                              hour: '2-digit',
+                              minute: '2-digit',
+                              hour12: true,
+                            })}
+                          </strong>
                         </span>
                       </div>
+                    )}
+                  </div>
 
-                      <div className="flex items-center gap-2">
+                  {/* Quantity Selector Controls */}
+                  <div className="bg-slate-50/90 p-3.5 rounded-2xl border border-slate-200/90 space-y-2.5">
+                    <div className="flex items-center justify-between text-xs font-bold text-slate-700">
+                      <span>Select Quantity:</span>
+                      <span className="text-emerald-700 font-extrabold">
+                        {remainingQty} item(s) left
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <div className="flex items-center bg-white border border-slate-200 rounded-xl overflow-hidden shadow-2xs">
+                        <button
+                          type="button"
+                          onClick={() => handleQtyChange(bundle.id, -1, remainingQty)}
+                          className="px-3 py-1.5 hover:bg-slate-100 font-extrabold text-slate-700 transition"
+                        >
+                          -
+                        </button>
                         <input
                           type="number"
-                          min="1"
-                          max={remainingQty}
-                          value={selectedQuantities[bundle.id] ?? 1}
+                          value={currentClaimQty === 0 ? '' : currentClaimQty}
                           onChange={(e) =>
                             handleDirectQtyChange(bundle.id, e.target.value, remainingQty)
                           }
-                          className="w-16 px-2 py-1.5 text-center font-black text-sm text-slate-900 bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none transition"
+                          className="w-12 text-center text-xs font-black text-slate-900 border-none focus:outline-none"
                         />
-
                         <button
                           type="button"
-                          onClick={() => handleSelectAll(bundle.id, remainingQty)}
-                          className="px-2.5 py-1.5 text-[11px] font-black uppercase tracking-wider bg-emerald-100 hover:bg-emerald-200 text-emerald-800 rounded-xl border border-emerald-300 transition shadow-xs"
-                          title="Select all available items"
+                          onClick={() => handleQtyChange(bundle.id, 1, remainingQty)}
+                          className="px-3 py-1.5 hover:bg-slate-100 font-extrabold text-slate-700 transition"
                         >
-                          All ({remainingQty})
+                          +
                         </button>
                       </div>
+
+                      <button
+                        type="button"
+                        onClick={() => handleSelectAll(bundle.id, remainingQty)}
+                        className="px-3.5 py-1.5 text-xs font-black bg-emerald-100 hover:bg-emerald-200 text-emerald-800 rounded-xl border border-emerald-300 transition"
+                      >
+                        All ({remainingQty})
+                      </button>
                     </div>
 
-                    <button
-                      onClick={() => handleClaim(bundle)}
-                      disabled={claimingId === bundle.id}
-                      className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold py-3.5 px-4 rounded-xl transition shadow-sm hover:shadow disabled:opacity-50 text-sm flex items-center justify-center gap-2"
-                    >
-                      {claimingId === bundle.id
-                        ? 'Reserving...'
-                        : calculatedTotal > 0
-                        ? hasBulkDiscount
-                          ? `💥 Claim All ${selectedQty} for ₹${calculatedTotal} (Bulk Discount!)`
-                          : `Claim ${selectedQty} item(s) for ₹${calculatedTotal}`
-                        : `Claim ${selectedQty} Free Item(s)`}
-                    </button>
+                    {isBulkAppliedForCurrentSelection && (
+                      <div className="text-[11px] font-extrabold text-amber-900 bg-amber-50 p-2 rounded-xl border border-amber-200 flex items-center gap-1.5">
+                        <Sparkles className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                        <span>Full Batch Discount applied! Saved ₹{standardCostForRemainingStock - rawBulkPrice}.</span>
+                      </div>
+                    )}
                   </div>
-                </motion.div>
-              );
-            })}
-          </motion.div>
-        )}
-      </div>
+                </div>
 
-      {/* 🌟 GUEST AUTH POPUP MODAL */}
+                {/* Card Action Footer */}
+                <div className="pt-3 border-t border-slate-100 space-y-3">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-bold text-slate-500">Total Payable:</span>
+                    <div className="text-right">
+                      {isBulkAppliedForCurrentSelection && (
+                        <span className="text-[11px] text-slate-400 line-through mr-1.5">
+                          ₹{standardCostForRemainingStock}
+                        </span>
+                      )}
+                      <span className="text-lg font-black text-slate-900">
+                        {isFree ? '₹0 (Free)' : `₹${finalCalculatedPrice}`}
+                      </span>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() => handleClaim(bundle)}
+                    disabled={claimingId === bundle.id}
+                    className="w-full py-3.5 px-4 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold rounded-2xl shadow-md transition duration-200 flex items-center justify-center gap-2 text-xs disabled:opacity-50"
+                  >
+                    {claimingId === bundle.id ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 animate-spin" />
+                        Processing Reservation...
+                      </>
+                    ) : isFree ? (
+                      '🎁 Claim Free Bundle'
+                    ) : (
+                      <>
+                        <span>Reserve {currentClaimQty} Item(s) for ₹{finalCalculatedPrice}</span>
+                        <ArrowRight className="w-4 h-4" />
+                      </>
+                    )}
+                  </button>
+                </div>
+              </motion.div>
+            );
+          })}
+        </motion.div>
+      )}
+
+      {/* Guest Auth Modal */}
       <AnimatePresence>
         {showAuthModal && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center px-4">
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4"
+          >
             <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setShowAuthModal(false)}
-              className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm"
-            />
-
-            <motion.div
-              initial={{ opacity: 0, scale: 0.9, y: 15 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.9, y: 15 }}
-              transition={{ type: 'spring', duration: 0.3 }}
-              className="relative bg-white rounded-3xl p-6 sm:p-8 max-w-sm w-full shadow-2xl border border-slate-100 text-center space-y-6 z-10"
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-white rounded-3xl p-6 sm:p-8 max-w-md w-full border border-slate-200 shadow-2xl space-y-6 text-center relative"
             >
               <button
                 onClick={() => setShowAuthModal(false)}
-                className="absolute top-4 right-4 p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full transition"
+                className="absolute top-4 right-4 p-2 text-slate-400 hover:text-slate-600 rounded-full"
               >
-                <X className="w-4 h-4" />
+                <X className="w-5 h-5" />
               </button>
 
-              <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-2xl flex items-center justify-center mx-auto shadow-sm border border-emerald-200">
+              <div className="w-16 h-16 bg-emerald-100 text-emerald-700 rounded-full flex items-center justify-center mx-auto">
                 <Lock className="w-8 h-8" />
               </div>
 
               <div className="space-y-2">
-                <h3 className="text-xl font-black text-slate-900">
-                  Join BiteShare to Claim Food
+                <h3 className="text-2xl font-black text-slate-900">
+                  Sign In to Reserve Food
                 </h3>
-                <p className="text-slate-500 text-xs leading-relaxed">
-                  To reserve surplus meals and receive your 4-digit pickup PIN, please log in or create a recipient account.
+                <p className="text-slate-600 text-xs sm:text-sm leading-relaxed">
+                  Join BiteShare to reserve surplus food and help prevent food waste.
                 </p>
               </div>
 
               <div className="space-y-3 pt-2">
                 <Link
-                  href="/signup"
-                  onClick={() => setShowAuthModal(false)}
-                  className="w-full py-3.5 px-4 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs uppercase tracking-wider rounded-xl transition shadow-md flex items-center justify-center gap-2"
+                  href="/signup?role=RECIPIENT"
+                  className="block w-full py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs sm:text-sm rounded-2xl shadow-md transition flex items-center justify-center gap-2"
                 >
                   <UserPlus className="w-4 h-4" />
-                  <span>Create Recipient Account</span>
+                  Create Recipient Account
                 </Link>
 
                 <Link
                   href="/login"
-                  onClick={() => setShowAuthModal(false)}
-                  className="w-full py-3.5 px-4 bg-slate-100 hover:bg-slate-200 text-slate-800 font-extrabold text-xs uppercase tracking-wider rounded-xl transition flex items-center justify-center gap-2"
+                  className="block w-full py-3.5 bg-slate-100 hover:bg-slate-200 text-slate-800 font-extrabold text-xs sm:text-sm rounded-2xl transition flex items-center justify-center gap-2"
                 >
-                  <LogIn className="w-4 h-4 text-emerald-600" />
-                  <span>Log In to Existing Account</span>
+                  <LogIn className="w-4 h-4" />
+                  Log In to Existing Account
                 </Link>
               </div>
             </motion.div>
-          </div>
+          </motion.div>
         )}
       </AnimatePresence>
     </div>

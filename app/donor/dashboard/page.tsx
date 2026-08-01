@@ -24,6 +24,9 @@ export default function DonorDashboardPage() {
   const [publishedBundles, setPublishedBundles] = useState<any[]>([]);
   const [loadingList, setLoadingList] = useState(true);
 
+  // Store profile state
+  const [donorProfile, setDonorProfile] = useState<any>(null);
+
   // Food Form States
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -41,7 +44,7 @@ export default function DonorDashboardPage() {
   const [stateVal, setStateVal] = useState('');
   const [country, setCountry] = useState('');
   const [fullPickupAddress, setFullPickupAddress] = useState('');
-  
+
   // Dynamic Lat/Lng
   const [latitude, setLatitude] = useState<number | null>(null);
   const [longitude, setLongitude] = useState<number | null>(null);
@@ -50,6 +53,7 @@ export default function DonorDashboardPage() {
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
 
+  // Auto-calculate Total Bundle Price when quantity or single item price changes
   useEffect(() => {
     if (!isManualEdited) {
       const q = quantity === '' ? 0 : Number(quantity);
@@ -58,6 +62,7 @@ export default function DonorDashboardPage() {
     }
   }, [quantity, pricePerItem, isManualEdited]);
 
+  // Sync Data and Realtime WebSocket Channel
   useEffect(() => {
     fetchDonorProfileAndBundles();
 
@@ -81,13 +86,15 @@ export default function DonorDashboardPage() {
     } = await supabase.auth.getUser();
 
     if (user) {
-      const { data: profile, error } = await supabase
+      const { data: profile } = await supabase
         .from('profiles')
         .select('*')
         .eq('id', user.id)
         .maybeSingle();
 
       if (profile) {
+        setDonorProfile(profile); // Stores profile in state
+
         const street = profile.street_address || profile.address || '';
         const c = profile.city || '';
         const pin = profile.pincode || '';
@@ -215,6 +222,7 @@ export default function DonorDashboardPage() {
     return null;
   };
 
+  // Bulk Discount Calculations
   const numQty = quantity === '' ? 0 : Number(quantity);
   const numPrice = pricePerItem === '' ? 0 : Number(pricePerItem);
   const stdTotal = numQty * numPrice;
@@ -227,9 +235,7 @@ export default function DonorDashboardPage() {
     setSubmitting(true);
     setMessage(null);
 
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
+    const { data: { user } } = await supabase.auth.getUser();
 
     if (!user) {
       setMessage({ text: 'Session expired. Please log in again.', type: 'error' });
@@ -246,7 +252,7 @@ export default function DonorDashboardPage() {
     let finalPickupEnd = pickupEnd;
     if (!finalPickupEnd) {
       const defaultTime = new Date();
-      defaultTime.setHours(defaultTime.getHours() + 3);
+      defaultTime.setHours(defaultTime.getHours() + 4);
       finalPickupEnd = defaultTime.toISOString();
     } else {
       finalPickupEnd = new Date(pickupEnd).toISOString();
@@ -254,7 +260,18 @@ export default function DonorDashboardPage() {
 
     const finalQty = quantity === '' ? 1 : Number(quantity);
     const finalPricePerItem = pricePerItem === '' ? 0 : Number(pricePerItem);
-    const finalBundlePrice = bundlePrice === '' ? finalQty * finalPricePerItem : Number(bundlePrice);
+
+    // Calculate standard total price (Qty * Unit Price)
+    const finalStdTotalPrice = finalQty * finalPricePerItem;
+
+    // Bulk discount price set by donor
+    const finalBulkDiscountPrice = bundlePrice === '' ? finalStdTotalPrice : Number(bundlePrice);
+
+    // Get exact store name from donor profile
+    const storeName =
+      donorProfile?.organization_name ||
+      donorProfile?.full_name ||
+      'BiteShare Partner Store';
 
     const finalAddress =
       fullPickupAddress.trim() ||
@@ -275,8 +292,12 @@ export default function DonorDashboardPage() {
       }
     }
 
+    const verifiedLat = finalLat !== null && !isNaN(Number(finalLat)) ? Number(finalLat) : 28.3670;
+    const verifiedLng = finalLng !== null && !isNaN(Number(finalLng)) ? Number(finalLng) : 79.4304;
+
     const newBundlePayload = {
       donor_id: user.id,
+      restaurant_name: storeName,
       title: title.trim(),
       description: description.trim(),
       category: category,
@@ -284,20 +305,21 @@ export default function DonorDashboardPage() {
       quantity_remaining: finalQty,
       price_per_item: finalPricePerItem,
       price: finalPricePerItem,
-      total_price: finalBundlePrice,
+      total_price: finalStdTotalPrice,        // Standard Total
+      bulk_discount_price: finalBulkDiscountPrice, // Bulk Discount Total
       address: finalAddress,
-      city: city.trim() || 'Delhi',
+      city: city.trim() || 'Bareilly',
       pincode: pincode.trim(),
-      state: stateVal.trim(),
-      country: country.trim(),
-      latitude: finalLat,
-      longitude: finalLng,
-      pickup_window_end: finalPickupEnd, // ⚡ Uses existing schema column
+      state: stateVal.trim() || 'Uttar Pradesh',
+      country: country.trim() || 'India',
+      latitude: verifiedLat,
+      longitude: verifiedLng,
+      pickup_window_end: finalPickupEnd,
       status: 'AVAILABLE',
       created_at: new Date().toISOString(),
     };
 
-    const { error } = await supabase.from('food_bundles').insert(newBundlePayload);
+    const { error } = await supabase.from('food_bundles').insert([newBundlePayload]);
 
     if (error) {
       setMessage({ text: 'Failed to publish bundle: ' + error.message, type: 'error' });
@@ -332,12 +354,12 @@ export default function DonorDashboardPage() {
   return (
     <div className="min-h-screen bg-slate-50 py-8 px-4 sm:px-6 lg:px-8 font-sans">
       <div className="max-w-6xl mx-auto space-y-10">
-        
+
         {/* Publish Form */}
         <div className="bg-white rounded-3xl p-6 sm:p-10 border border-slate-200 shadow-xs space-y-6">
           <div className="border-b border-slate-100 pb-5">
             <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-emerald-100 text-emerald-800 text-xs font-black uppercase tracking-wider border border-emerald-200 mb-2">
-              <PlusCircle className="w-4 h-4 text-emerald-600" /> Donor Portal
+              <PlusCircle className="w-4 h-4 text-emerald-600" /> Donor Station
             </div>
             <h1 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
               Publish Surplus Food Bundle
@@ -392,7 +414,7 @@ export default function DonorDashboardPage() {
                   <option value="COOKED">🍲 Cooked Hot Meals</option>
                   <option value="BAKERY">🥖 Bakery & Snacks</option>
                   <option value="GROCERY">🍎 Fresh Groceries & Fruits</option>
-                  <option value="SHELTER_FREE">❤️ 100% Free Shelter Donation</option>
+                  <option value="FREE">❤️ 100% Free Shelter Donation</option>
                 </select>
               </div>
             </div>
@@ -637,7 +659,7 @@ export default function DonorDashboardPage() {
               {latitude && longitude && (
                 <div className="text-[10px] text-emerald-700 font-bold flex items-center gap-1">
                   <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-                  <span>GPS Lat/Lng Coordinates Attached: {latitude.toFixed(4)}, {longitude.toFixed(4)}</span>
+                  <span>GPS Lat/Lng Coordinates Attached: {Number(latitude).toFixed(4)}, {Number(longitude).toFixed(4)}</span>
                 </div>
               )}
             </div>
@@ -689,14 +711,14 @@ export default function DonorDashboardPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {publishedBundles.map((bundle) => {
                 const remaining = bundle.quantity_remaining ?? bundle.quantity ?? 0;
-                
-                const isExpired = bundle.pickup_window_end 
-                  ? new Date(bundle.pickup_window_end).getTime() < new Date().getTime() 
+
+                const isExpired = bundle.pickup_window_end
+                  ? new Date(bundle.pickup_window_end).getTime() < new Date().getTime()
                   : false;
 
                 const isClaimedOut = remaining <= 0 || bundle.status === 'CLAIMED';
                 const price = bundle.price_per_item ?? bundle.price ?? 0;
-                const totalBatchPrice = bundle.total_price;
+                const totalBatchPrice = bundle.bulk_discount_price || bundle.total_price;
                 const bundleStdTotal = (bundle.quantity || 1) * price;
                 const hasDiscount = totalBatchPrice && totalBatchPrice < bundleStdTotal && price > 0;
                 const pctOff = hasDiscount ? Math.round(((bundleStdTotal - totalBatchPrice) / bundleStdTotal) * 100) : 0;
@@ -705,7 +727,11 @@ export default function DonorDashboardPage() {
                   <div
                     key={bundle.id}
                     className={`bg-white rounded-3xl border overflow-hidden shadow-xs hover:shadow-md transition flex flex-col justify-between ${
-                      isExpired && !isClaimedOut ? 'border-red-200 bg-red-50/20' : isClaimedOut ? 'border-slate-200 opacity-75' : 'border-slate-200'
+                      isExpired && !isClaimedOut
+                        ? 'border-red-200 bg-red-50/20'
+                        : isClaimedOut
+                        ? 'border-slate-200 opacity-75'
+                        : 'border-slate-200'
                     }`}
                   >
                     <div className="p-6 space-y-3">
@@ -719,8 +745,20 @@ export default function DonorDashboardPage() {
                               : 'bg-emerald-100 text-emerald-800 border-emerald-200'
                           }`}
                         >
-                          <span className={`w-2 h-2 rounded-full ${isExpired && !isClaimedOut ? 'bg-red-500' : isClaimedOut ? 'bg-slate-400' : 'bg-emerald-600 animate-pulse'}`} />
-                          {isExpired && !isClaimedOut ? 'Expired' : isClaimedOut ? 'Fully Reserved' : `${remaining} Remaining`}
+                          <span
+                            className={`w-2 h-2 rounded-full ${
+                              isExpired && !isClaimedOut
+                                ? 'bg-red-500'
+                                : isClaimedOut
+                                ? 'bg-slate-400'
+                                : 'bg-emerald-600 animate-pulse'
+                            }`}
+                          />
+                          {isExpired && !isClaimedOut
+                            ? 'Expired'
+                            : isClaimedOut
+                            ? 'Fully Reserved'
+                            : `${remaining} Remaining`}
                         </span>
 
                         <span
@@ -737,7 +775,9 @@ export default function DonorDashboardPage() {
                       {hasDiscount && (
                         <div className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-amber-50 border border-amber-200 text-amber-800 rounded-md text-[10px] font-black">
                           <Flame className="w-3 h-3 text-amber-600" />
-                          <span>Buy All ({bundle.quantity} items): {pctOff}% OFF (₹{totalBatchPrice})</span>
+                          <span>
+                            Buy All ({bundle.quantity} items): {pctOff}% OFF (₹{totalBatchPrice})
+                          </span>
                         </div>
                       )}
 
@@ -756,7 +796,11 @@ export default function DonorDashboardPage() {
 
                         {bundle.pickup_window_end && (
                           <div className="flex items-center gap-1.5">
-                            <Clock className={`w-3.5 h-3.5 flex-shrink-0 ${isExpired && !isClaimedOut ? 'text-red-500' : 'text-amber-600'}`} />
+                            <Clock
+                              className={`w-3.5 h-3.5 flex-shrink-0 ${
+                                isExpired && !isClaimedOut ? 'text-red-500' : 'text-amber-600'
+                              }`}
+                            />
                             <span className={isExpired && !isClaimedOut ? 'text-red-600 font-bold' : ''}>
                               {isExpired && !isClaimedOut ? 'Expired at: ' : 'Ends: '}
                               {new Date(bundle.pickup_window_end).toLocaleTimeString([], {

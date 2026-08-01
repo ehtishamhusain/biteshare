@@ -49,26 +49,36 @@ export default function Home() {
   const [latestBundle, setLatestBundle] = useState<any>(null);
   const [loadingBundle, setLoadingBundle] = useState(true);
 
-  // 🔄 Fetch the most recently published AVAILABLE food bundle from Supabase
-  const fetchLatestBundle = async () => {
-    setLoadingBundle(true);
-    const nowIso = new Date().toISOString();
-    const { data, error } = await supabase
-      .from('food_bundles')
-      .select('*, donor:profiles(organization_name, full_name, city)')
-      .eq('status', 'AVAILABLE')
-      .gt('expires_at', nowIso)
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
+const fetchLatestBundle = async () => {
+  setLoadingBundle(true);
 
-    if (!error && data) {
-      setLatestBundle(data);
-    } else {
-      setLatestBundle(null);
+  // Fetch latest food bundle directly
+  const { data: bundle } = await supabase
+    .from('food_bundles')
+    .select('*')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (bundle) {
+    // Fetch donor profile info separately to guarantee non-failing queries
+    if (bundle.donor_id) {
+      const { data: donor } = await supabase
+        .from('profiles')
+        .select('organization_name, full_name, city')
+        .eq('id', bundle.donor_id)
+        .maybeSingle();
+
+      if (donor) {
+        bundle.donor = donor;
+      }
     }
-    setLoadingBundle(false);
-  };
+    setLatestBundle(bundle);
+  } else {
+    setLatestBundle(null);
+  }
+  setLoadingBundle(false);
+};
 
   useEffect(() => {
     fetchLatestBundle();
