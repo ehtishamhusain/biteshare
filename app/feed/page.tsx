@@ -26,9 +26,12 @@ import {
   AlertCircle,
   IndianRupee,
   ArrowRight,
+  HeartHandshake,
+  KeyRound,
+  ShieldAlert,
+  ShoppingBag,
 } from 'lucide-react';
 
-// Dynamic import for existing RestaurantMapView component
 const RestaurantMapView = dynamic(
   () => import('@/components/RestaurantMapView'),
   {
@@ -59,7 +62,7 @@ const fadeInUp: Variants = {
   },
 };
 
-const CATEGORIES = ['All', 'COOKED', 'BAKERY', 'GROCERY', 'FREE'];
+const CATEGORIES = ['All', 'Cooked Meals', 'Bakery', 'Groceries', 'Free Items'];
 
 export default function FeedPage() {
   const router = useRouter();
@@ -74,7 +77,15 @@ export default function FeedPage() {
   const [claimingId, setClaimingId] = useState<string | null>(null);
   const [message, setMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
 
+  // Modals
   const [showAuthModal, setShowAuthModal] = useState(false);
+  const [successModalData, setSuccessModalData] = useState<{
+    pin: string;
+    bundleTitle: string;
+    storeName: string;
+    claimedQty: number;
+    pickupDeadline: string;
+  } | null>(null);
 
   // Redirect Donors to Dashboard
   useEffect(() => {
@@ -101,12 +112,11 @@ export default function FeedPage() {
     const nowIso = new Date().toISOString();
     const nowTime = new Date().getTime();
 
-    // Database-level filtering: only status AVAILABLE and pickup_window_end in the future
     const { data: rawBundles, error } = await supabase
       .from('food_bundles')
       .select('*')
       .in('status', ['AVAILABLE', 'available'])
-      .gt('pickup_window_end', nowIso) // ⚡ Filters out expired pickup windows at DB level
+      .gt('pickup_window_end', nowIso)
       .order('created_at', { ascending: false });
 
     if (error || !rawBundles) {
@@ -115,7 +125,6 @@ export default function FeedPage() {
       return;
     }
 
-    // Fetch donor profile details
     const donorIds = Array.from(new Set(rawBundles.map((b) => b.donor_id).filter(Boolean)));
     const donorMap = new Map();
 
@@ -146,7 +155,6 @@ export default function FeedPage() {
         };
       })
       .filter((bundle) => {
-        // ⚡ Double Client-Side Expiration & Stock Check
         const expTime = bundle.pickup_window_end || bundle.expires_at;
         const isNotExpired = expTime ? new Date(expTime).getTime() > nowTime : true;
         const hasStock = bundle.quantity_remaining > 0;
@@ -167,7 +175,6 @@ export default function FeedPage() {
   useEffect(() => {
     fetchBundles();
 
-    // Auto-refresh feed every 30 seconds to clean up newly expired items in real time
     const interval = setInterval(() => {
       fetchBundles();
     }, 30000);
@@ -189,18 +196,10 @@ export default function FeedPage() {
     const nowTime = new Date().getTime();
 
     return bundles.filter((bundle) => {
-      // Re-verify expiration in real-time
       const expTime = bundle.pickup_window_end || bundle.expires_at;
       if (expTime && new Date(expTime).getTime() <= nowTime) {
         return false;
       }
-
-      // Inside filteredBundles map logic:
-      const restaurantName =
-        bundle.restaurant_name ||
-        bundle.donor?.organization_name ||
-        bundle.donor?.full_name ||
-        'BiteShare Partner Store';
 
       const donorName = (
         bundle.restaurant_name ||
@@ -264,7 +263,7 @@ export default function FeedPage() {
     return Array.from(restaurantMap.values());
   }, [filteredBundles]);
 
-  // Quantity selection controls
+  // Quantity controls
   const handleQtyChange = (bundleId: string, delta: number, maxQty: number) => {
     setSelectedQuantities((prev) => {
       const current = prev[bundleId] || 1;
@@ -344,7 +343,7 @@ export default function FeedPage() {
       rawBulkPrice < standardCostForRemainingStock;
 
     const totalPrice = isFullRemainingBatchSelected && hasValidBulkDiscount ? rawBulkPrice : standardCostForSelected;
-
+    
     // 12% Platform Fee & 88% Donor Payout
     const platformFee = totalPrice > 0 ? totalPrice * 0.12 : 0;
     const donorPayout = totalPrice > 0 ? totalPrice * 0.88 : 0;
@@ -380,7 +379,19 @@ export default function FeedPage() {
       })
       .eq('id', bundleId);
 
-    setMessage({ text: `🎉 Reserved ${claimQty} item(s) successfully! PIN: ${generatedPin}. Check "My Claims".`, type: 'success' });
+    const storeNameStr = bundle.restaurant_name || bundle.donor?.organization_name || bundle.donor?.full_name || 'Partner Store';
+
+    // Trigger Thank You Pop-up Modal with Instructions
+    setSuccessModalData({
+      pin: generatedPin,
+      bundleTitle: bundle.title,
+      storeName: storeNameStr,
+      claimedQty: claimQty,
+      pickupDeadline: bundle.pickup_window_end
+        ? new Date(bundle.pickup_window_end).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true })
+        : 'Store Closing Time',
+    });
+
     fetchBundles();
     setClaimingId(null);
   };
@@ -435,20 +446,22 @@ export default function FeedPage() {
           <div className="flex items-center gap-1.5 p-1.5 bg-slate-100 rounded-2xl border border-slate-200 w-full md:w-auto justify-center">
             <button
               onClick={() => setViewMode('list')}
-              className={`flex-1 md:flex-none px-5 py-2 rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 ${viewMode === 'list'
+              className={`flex-1 md:flex-none px-5 py-2 rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 ${
+                viewMode === 'list'
                   ? 'bg-white text-slate-900 shadow-sm'
                   : 'text-slate-600 hover:text-slate-900'
-                }`}
+              }`}
             >
               <List className="w-4 h-4 text-emerald-600" />
               List View
             </button>
             <button
               onClick={() => setViewMode('map')}
-              className={`flex-1 md:flex-none px-5 py-2 rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 ${viewMode === 'map'
+              className={`flex-1 md:flex-none px-5 py-2 rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 ${
+                viewMode === 'map'
                   ? 'bg-white text-slate-900 shadow-sm'
                   : 'text-slate-600 hover:text-slate-900'
-                }`}
+              }`}
             >
               <MapIcon className="w-4 h-4 text-emerald-600" />
               Map View
@@ -462,10 +475,11 @@ export default function FeedPage() {
             <button
               key={cat}
               onClick={() => setSelectedCategory(cat)}
-              className={`px-4 py-2 rounded-xl text-xs font-extrabold whitespace-nowrap transition border ${selectedCategory === cat
+              className={`px-4 py-2 rounded-xl text-xs font-extrabold whitespace-nowrap transition border ${
+                selectedCategory === cat
                   ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm'
                   : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
-                }`}
+              }`}
             >
               {cat}
             </button>
@@ -477,10 +491,11 @@ export default function FeedPage() {
         <motion.div
           initial={{ opacity: 0, y: -10 }}
           animate={{ opacity: 1, y: 0 }}
-          className={`p-4 rounded-2xl font-semibold text-sm border shadow-xs flex items-center gap-2 ${message.type === 'success'
+          className={`p-4 rounded-2xl font-semibold text-sm border shadow-xs flex items-center gap-2 ${
+            message.type === 'success'
               ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
               : 'bg-red-50 text-red-800 border-red-200'
-            }`}
+          }`}
         >
           {message.type === 'success' ? (
             <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
@@ -491,7 +506,7 @@ export default function FeedPage() {
         </motion.div>
       )}
 
-      {/* View Switcher: List vs Restaurant Map */}
+      {/* View Switcher */}
       {viewMode === 'map' ? (
         <RestaurantMapView restaurants={restaurantListForMap} />
       ) : loading ? (
@@ -754,6 +769,116 @@ export default function FeedPage() {
           })}
         </motion.div>
       )}
+
+      {/* 🎉 THANK YOU & INSTRUCTIONS POP-UP MODAL */}
+      <AnimatePresence>
+        {successModalData && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto"
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-white rounded-3xl p-6 sm:p-8 max-w-md w-full border border-slate-200 shadow-2xl space-y-6 text-center relative my-8"
+            >
+              <button
+                onClick={() => setSuccessModalData(null)}
+                className="absolute top-4 right-4 p-2 text-slate-400 hover:text-slate-600 rounded-full transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+
+              <div className="w-16 h-16 bg-emerald-100 text-emerald-700 rounded-full flex items-center justify-center mx-auto border-2 border-emerald-200">
+                <HeartHandshake className="w-8 h-8 text-emerald-600" />
+              </div>
+
+              <div className="space-y-1.5">
+                <span className="text-xs font-black uppercase tracking-wider text-emerald-700 bg-emerald-50 px-3 py-1 rounded-full border border-emerald-200">
+                  Reservation Confirmed!
+                </span>
+                <h3 className="text-2xl font-black text-slate-900 pt-1">
+                  Thank You for Rescuing Food!
+                </h3>
+                <p className="text-slate-600 text-xs sm:text-sm">
+                  Reserved <strong className="text-slate-900">{successModalData.claimedQty} item(s)</strong> of{' '}
+                  <span className="text-emerald-700 font-bold">{successModalData.bundleTitle}</span> from{' '}
+                  <strong className="text-slate-900">{successModalData.storeName}</strong>.
+                </p>
+              </div>
+
+              {/* Counter PIN Box */}
+              <div className="bg-gradient-to-br from-emerald-50 to-teal-50 border-2 border-dashed border-emerald-300 rounded-2xl p-4 space-y-1">
+                <div className="flex items-center justify-center gap-1.5 text-xs font-black uppercase tracking-wider text-emerald-800">
+                  <KeyRound className="w-4 h-4 text-emerald-600" />
+                  <span>Your Counter Pickup PIN</span>
+                </div>
+                <div className="text-4xl font-black text-emerald-900 tracking-widest font-mono">
+                  {successModalData.pin}
+                </div>
+              </div>
+
+              {/* Instructions Box */}
+              <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 text-left space-y-3">
+                <h4 className="text-xs font-black uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
+                  <ShieldAlert className="w-4 h-4 text-amber-600" /> Essential Pickup Instructions
+                </h4>
+
+                <ul className="text-xs space-y-2.5 text-slate-600 font-medium">
+                  <li className="flex items-start gap-2">
+                    <span className="bg-emerald-100 text-emerald-800 rounded-full w-5 h-5 flex items-center justify-center shrink-0 text-[11px] font-black mt-0.5">
+                      1
+                    </span>
+                    <span>
+                      <strong>Arrive on Time:</strong> Collect before{' '}
+                      <strong className="text-slate-900">{successModalData.pickupDeadline}</strong>. Unclaimed items expire automatically.
+                    </span>
+                  </li>
+
+                  <li className="flex items-start gap-2">
+                    <span className="bg-emerald-100 text-emerald-800 rounded-full w-5 h-5 flex items-center justify-center shrink-0 text-[11px] font-black mt-0.5">
+                      2
+                    </span>
+                    <span>
+                      <strong>Check Quality First:</strong> Physically inspect food temperature and packaging at the counter <u>BEFORE</u> sharing your PIN.
+                    </span>
+                  </li>
+
+                  <li className="flex items-start gap-2">
+                    <span className="bg-amber-100 text-amber-900 rounded-full w-5 h-5 flex items-center justify-center shrink-0 text-[11px] font-black mt-0.5">
+                      3
+                    </span>
+                    <span>
+                      <strong>Platform Liability Notice:</strong> Once your PIN is verified by counter staff, the order is complete. If food is spoiled upon arrival, click <strong>"Reject at Counter"</strong> on <Link href="/my-claims" className="text-emerald-700 underline font-bold">My Claims</Link> to cancel at ₹0.
+                    </span>
+                  </li>
+                </ul>
+              </div>
+
+              <div className="space-y-2 pt-2">
+                <Link
+                  href="/my-claims"
+                  className="block w-full py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs sm:text-sm rounded-2xl shadow-md transition flex items-center justify-center gap-2"
+                >
+                  <ShoppingBag className="w-4 h-4" />
+                  Go to My Claims Page
+                </Link>
+
+                <button
+                  type="button"
+                  onClick={() => setSuccessModalData(null)}
+                  className="w-full py-2.5 text-slate-500 hover:text-slate-700 font-bold text-xs transition"
+                >
+                  Continue Browsing Feed
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Guest Auth Modal */}
       <AnimatePresence>

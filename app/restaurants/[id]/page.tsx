@@ -25,6 +25,10 @@ import {
   Send,
   AlertCircle,
   Layers,
+  HeartHandshake,
+  KeyRound,
+  ShieldAlert,
+  ShoppingBag,
 } from 'lucide-react';
 
 export default function SingleRestaurantPage() {
@@ -41,12 +45,19 @@ export default function SingleRestaurantPage() {
   const [loading, setLoading] = useState(true);
   const [claimingId, setClaimingId] = useState<string | null>(null);
   const [message, setMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
-  const [showAuthModal, setShowAuthModal] = useState(false);
 
-  // 🔢 Quantity selector state for each food bundle
+  // Modals
+  const [showAuthModal, setShowAuthModal] = useState(false);
+  const [successModalData, setSuccessModalData] = useState<{
+    pin: string;
+    bundleTitle: string;
+    storeName: string;
+    claimedQty: number;
+    pickupDeadline: string;
+  } | null>(null);
+
   const [selectedQuantities, setSelectedQuantities] = useState<{ [bundleId: string]: number }>({});
 
-  // Review Form Modal States
   const [showReviewModal, setShowReviewModal] = useState(false);
   const [ratingInput, setRatingInput] = useState(5);
   const [commentInput, setCommentInput] = useState('');
@@ -62,7 +73,6 @@ export default function SingleRestaurantPage() {
   const fetchDonorData = async (id: string) => {
     setLoading(true);
 
-    // 1. Fetch Donor Profile
     const { data: profile } = await supabase
       .from('profiles')
       .select('*')
@@ -71,7 +81,6 @@ export default function SingleRestaurantPage() {
 
     if (profile) setDonorProfile(profile);
 
-    // 2. Fetch Surplus Food Bundles
     let { data: foodItems } = await supabase
       .from('food_bundles')
       .select('*')
@@ -93,7 +102,6 @@ export default function SingleRestaurantPage() {
 
       setBundles(processed);
 
-      // Initialize selected quantities map to 1 for each bundle
       const initialQtyMap: { [key: string]: number } = {};
       processed.forEach((b) => {
         initialQtyMap[b.id] = 1;
@@ -101,9 +109,7 @@ export default function SingleRestaurantPage() {
       setSelectedQuantities(initialQtyMap);
     }
 
-    // 3. Fetch Reviews
     await fetchReviews(id);
-
     setLoading(false);
   };
 
@@ -126,7 +132,6 @@ export default function SingleRestaurantPage() {
     }
   };
 
-  // 🔢 Quantity Handler Functions
   const handleDirectQtyChange = (bundleId: string, inputVal: string, maxQty: number) => {
     if (inputVal === '') {
       setSelectedQuantities((prev) => ({ ...prev, [bundleId]: 0 }));
@@ -144,7 +149,6 @@ export default function SingleRestaurantPage() {
     setSelectedQuantities((prev) => ({ ...prev, [bundleId]: maxQty }));
   };
 
-  // 🛍️ Claim Food with Custom Quantity and Financial Calculation
   const handleClaim = async (bundle: any) => {
     const bundleId = bundle.id;
     const remainingQty =
@@ -163,7 +167,6 @@ export default function SingleRestaurantPage() {
     const isFullRemainingBatch = claimQty === remainingQty;
     const isOriginalBatchIntact = remainingQty === originalQty;
 
-    // Bulk discount applies ONLY IF 100% of original batch is intact AND full remaining batch is selected
     const hasBulkDiscount =
       isOriginalBatchIntact &&
       isFullRemainingBatch &&
@@ -173,9 +176,10 @@ export default function SingleRestaurantPage() {
 
     const totalPrice = hasBulkDiscount ? rawBulkPrice : claimQty * pricePerUnit;
 
-    // 💰 Calculate 10% Platform Fee and 90% Donor Payout
-    const platformFee = totalPrice > 0 ? totalPrice * 0.10 : 0;
-    const donorPayout = totalPrice > 0 ? totalPrice * 0.90 : 0;
+    const platformFee = totalPrice > 0 ? totalPrice * 0.12 : 0;
+    const donorPayout = totalPrice > 0 ? totalPrice * 0.88 : 0;
+
+    const generatedPin = Math.floor(1000 + Math.random() * 9000).toString();
 
     setClaimingId(bundleId);
     setMessage(null);
@@ -187,8 +191,6 @@ export default function SingleRestaurantPage() {
       setClaimingId(null);
       return;
     }
-
-    const generatedPin = Math.floor(1000 + Math.random() * 9000).toString();
 
     const { error: claimError } = await supabase.from('claims').insert({
       bundle_id: bundleId,
@@ -216,9 +218,17 @@ export default function SingleRestaurantPage() {
       })
       .eq('id', bundleId);
 
-    setMessage({
-      text: `🎉 Reserved ${claimQty} item(s) for ₹${totalPrice}! PIN: ${generatedPin}. Check "My Claims" for details.`,
-      type: 'success',
+    const storeNameStr = donorProfile?.organization_name || donorProfile?.full_name || 'Partner Store';
+
+    // Open Thank You Instructions Modal
+    setSuccessModalData({
+      pin: generatedPin,
+      bundleTitle: bundle.title,
+      storeName: storeNameStr,
+      claimedQty: claimQty,
+      pickupDeadline: bundle.pickup_window_end
+        ? new Date(bundle.pickup_window_end).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true })
+        : 'Store Closing Time',
     });
 
     if (donorId) fetchDonorData(donorId);
@@ -284,11 +294,11 @@ export default function SingleRestaurantPage() {
         
         {/* Navigation Back Link */}
         <Link
-          href="/restaurants"
+          href="/feed"
           className="inline-flex items-center gap-2 text-xs font-bold text-slate-600 hover:text-emerald-600 transition"
         >
           <ArrowLeft className="w-4 h-4" />
-          <span>Back to All Restaurants</span>
+          <span>Back to Explore Feed</span>
         </Link>
 
         {/* Store Banner Card */}
@@ -301,7 +311,6 @@ export default function SingleRestaurantPage() {
               </div>
               <h1 className="text-3xl font-black text-slate-900">{storeName}</h1>
               
-              {/* Star Rating Badge */}
               <div className="flex items-center gap-2 pt-1 text-xs">
                 <div className="flex items-center gap-1 bg-amber-50 text-amber-900 border border-amber-200 px-2.5 py-1 rounded-lg font-black">
                   <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-500" />
@@ -387,7 +396,6 @@ export default function SingleRestaurantPage() {
                 const isFullRemainingBatchSelected = selectedQty === remainingQty;
                 const isOriginalBatchIntact = remainingQty === originalQty;
 
-                // Bulk deal is valid ONLY IF 100% of original batch is intact
                 const hasBulkDiscountDeal =
                   isOriginalBatchIntact &&
                   rawBulkPrice > 0 &&
@@ -420,7 +428,6 @@ export default function SingleRestaurantPage() {
                             {pricePerUnit === 0 ? '🎁 FREE' : `₹${pricePerUnit} / item`}
                           </span>
 
-                          {/* Deal badge displays ONLY IF 100% of original batch is intact */}
                           {hasBulkDiscountDeal && (
                             <div className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-md">
                               All {originalQty} for ₹{rawBulkPrice} Deal
@@ -449,7 +456,6 @@ export default function SingleRestaurantPage() {
                       )}
                     </div>
 
-                    {/* Quantity Selection Bar & Dynamic Claim Button */}
                     <div className="p-4 bg-slate-50 border-t border-slate-100 space-y-3">
                       <div className="flex items-center justify-between bg-white px-3.5 py-2.5 rounded-2xl border border-slate-200 shadow-xs">
                         <div className="flex flex-col">
@@ -566,153 +572,168 @@ export default function SingleRestaurantPage() {
 
       </div>
 
-      {/* WRITE A REVIEW MODAL */}
+      {/* 🎉 THANK YOU & INSTRUCTIONS POP-UP MODAL */}
       <AnimatePresence>
-        {showReviewModal && (
-          <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+        {successModalData && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto"
+          >
             <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-white rounded-3xl max-w-md w-full p-6 sm:p-8 shadow-2xl border border-slate-200 space-y-5"
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-white rounded-3xl p-6 sm:p-8 max-w-md w-full border border-slate-200 shadow-2xl space-y-6 text-center relative my-8"
             >
-              <div className="flex items-center justify-between border-b border-slate-100 pb-4">
-                <div className="flex items-center gap-2">
-                  <Star className="w-5 h-5 text-amber-500 fill-amber-400" />
-                  <h3 className="text-lg font-black text-slate-900">Review {storeName}</h3>
-                </div>
-                <button
-                  onClick={() => setShowReviewModal(false)}
-                  className="p-1 rounded-lg text-slate-400 hover:text-slate-600 transition"
-                >
-                  <X className="w-5 h-5" />
-                </button>
+              <button
+                onClick={() => setSuccessModalData(null)}
+                className="absolute top-4 right-4 p-2 text-slate-400 hover:text-slate-600 rounded-full transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+
+              <div className="w-16 h-16 bg-emerald-100 text-emerald-700 rounded-full flex items-center justify-center mx-auto border-2 border-emerald-200">
+                <HeartHandshake className="w-8 h-8 text-emerald-600" />
               </div>
 
-              <form onSubmit={handleSubmitReview} className="space-y-4">
-                {reviewError && (
-                  <div className="p-3 bg-red-50 border border-red-200 text-red-700 text-xs font-semibold rounded-xl flex items-center gap-2">
-                    <AlertCircle className="w-4 h-4 flex-shrink-0" />
-                    <span>{reviewError}</span>
-                  </div>
-                )}
+              <div className="space-y-1.5">
+                <span className="text-xs font-black uppercase tracking-wider text-emerald-700 bg-emerald-50 px-3 py-1 rounded-full border border-emerald-200">
+                  Reservation Confirmed!
+                </span>
+                <h3 className="text-2xl font-black text-slate-900 pt-1">
+                  Thank You for Rescuing Food!
+                </h3>
+                <p className="text-slate-600 text-xs sm:text-sm">
+                  Reserved <strong className="text-slate-900">{successModalData.claimedQty} item(s)</strong> of{' '}
+                  <span className="text-emerald-700 font-bold">{successModalData.bundleTitle}</span> from{' '}
+                  <strong className="text-slate-900">{successModalData.storeName}</strong>.
+                </p>
+              </div>
 
-                <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">
-                    Select Your Rating
-                  </label>
-                  <div className="flex gap-2 justify-center p-3 bg-slate-50 rounded-2xl border border-slate-200">
-                    {[1, 2, 3, 4, 5].map((star) => (
-                      <button
-                        key={star}
-                        type="button"
-                        onClick={() => setRatingInput(star)}
-                        className="p-1 transition hover:scale-110"
-                      >
-                        <Star
-                          className={`w-7 h-7 ${
-                            star <= ratingInput
-                              ? 'fill-amber-400 text-amber-500'
-                              : 'text-slate-300'
-                          }`}
-                        />
-                      </button>
-                    ))}
-                  </div>
+              <div className="bg-gradient-to-br from-emerald-50 to-teal-50 border-2 border-dashed border-emerald-300 rounded-2xl p-4 space-y-1">
+                <div className="flex items-center justify-center gap-1.5 text-xs font-black uppercase tracking-wider text-emerald-800">
+                  <KeyRound className="w-4 h-4 text-emerald-600" />
+                  <span>Your Counter Pickup PIN</span>
                 </div>
+                <div className="text-4xl font-black text-emerald-900 tracking-widest font-mono">
+                  {successModalData.pin}
+                </div>
+              </div>
 
-                <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">
-                    Your Review Feedback
-                  </label>
-                  <textarea
-                    rows={3}
-                    required
-                    value={commentInput}
-                    onChange={(e) => setCommentInput(e.target.value)}
-                    placeholder="Describe food quality, packaging hygiene, or store pickup speed..."
-                    className="w-full p-3 rounded-2xl border border-slate-200 focus:ring-2 focus:ring-emerald-500 outline-none text-xs text-slate-800 bg-slate-50/50"
-                  />
-                </div>
+              <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 text-left space-y-3">
+                <h4 className="text-xs font-black uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
+                  <ShieldAlert className="w-4 h-4 text-amber-600" /> Essential Pickup Instructions
+                </h4>
 
-                <div className="flex gap-3 pt-2">
-                  <button
-                    type="button"
-                    onClick={() => setShowReviewModal(false)}
-                    className="w-1/3 py-3 px-4 rounded-xl border border-slate-200 text-slate-600 font-bold text-xs hover:bg-slate-50 transition"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={submittingReview}
-                    className="w-2/3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 px-4 rounded-xl text-xs transition shadow-xs flex items-center justify-center gap-2 disabled:opacity-50"
-                  >
-                    <Send className="w-3.5 h-3.5" />
-                    <span>{submittingReview ? 'Submitting...' : 'Submit Review'}</span>
-                  </button>
-                </div>
-              </form>
+                <ul className="text-xs space-y-2.5 text-slate-600 font-medium">
+                  <li className="flex items-start gap-2">
+                    <span className="bg-emerald-100 text-emerald-800 rounded-full w-5 h-5 flex items-center justify-center shrink-0 text-[11px] font-black mt-0.5">
+                      1
+                    </span>
+                    <span>
+                      <strong>Arrive on Time:</strong> Collect before{' '}
+                      <strong className="text-slate-900">{successModalData.pickupDeadline}</strong>. Unclaimed items expire automatically.
+                    </span>
+                  </li>
+
+                  <li className="flex items-start gap-2">
+                    <span className="bg-emerald-100 text-emerald-800 rounded-full w-5 h-5 flex items-center justify-center shrink-0 text-[11px] font-black mt-0.5">
+                      2
+                    </span>
+                    <span>
+                      <strong>Check Quality First:</strong> Physically inspect food temperature and packaging at the counter <u>BEFORE</u> sharing your PIN.
+                    </span>
+                  </li>
+
+                  <li className="flex items-start gap-2">
+                    <span className="bg-amber-100 text-amber-900 rounded-full w-5 h-5 flex items-center justify-center shrink-0 text-[11px] font-black mt-0.5">
+                      3
+                    </span>
+                    <span>
+                      <strong>Platform Liability Notice:</strong> Once your PIN is verified by counter staff, the order is complete. If food is spoiled upon arrival, click <strong>"Reject at Counter"</strong> on <Link href="/my-claims" className="text-emerald-700 underline font-bold">My Claims</Link> to cancel at ₹0.
+                    </span>
+                  </li>
+                </ul>
+              </div>
+
+              <div className="space-y-2 pt-2">
+                <Link
+                  href="/my-claims"
+                  className="block w-full py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs sm:text-sm rounded-2xl shadow-md transition flex items-center justify-center gap-2"
+                >
+                  <ShoppingBag className="w-4 h-4" />
+                  Go to My Claims Page
+                </Link>
+
+                <button
+                  type="button"
+                  onClick={() => setSuccessModalData(null)}
+                  className="w-full py-2.5 text-slate-500 hover:text-slate-700 font-bold text-xs transition"
+                >
+                  Close & Continue
+                </button>
+              </div>
             </motion.div>
-          </div>
+          </motion.div>
         )}
       </AnimatePresence>
 
       {/* Guest Auth Modal */}
       <AnimatePresence>
         {showAuthModal && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center px-4">
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4"
+          >
             <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setShowAuthModal(false)}
-              className="absolute inset-0 bg-slate-900/40 backdrop-blur-xs"
-            />
-
-            <motion.div
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.9 }}
-              className="relative bg-white rounded-3xl p-6 max-w-sm w-full shadow-2xl border border-slate-100 text-center space-y-5 z-10"
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-white rounded-3xl p-6 sm:p-8 max-w-md w-full border border-slate-200 shadow-2xl space-y-6 text-center relative"
             >
               <button
                 onClick={() => setShowAuthModal(false)}
-                className="absolute top-4 right-4 p-2 text-slate-400 hover:text-slate-600 transition"
+                className="absolute top-4 right-4 p-2 text-slate-400 hover:text-slate-600 rounded-full"
               >
-                <X className="w-4 h-4" />
+                <X className="w-5 h-5" />
               </button>
 
-              <div className="w-14 h-14 bg-emerald-100 text-emerald-600 rounded-2xl flex items-center justify-center mx-auto border border-emerald-200">
-                <Lock className="w-7 h-7" />
+              <div className="w-16 h-16 bg-emerald-100 text-emerald-700 rounded-full flex items-center justify-center mx-auto">
+                <Lock className="w-8 h-8" />
               </div>
 
-              <div className="space-y-1">
-                <h3 className="text-lg font-black text-slate-900">Sign In Required</h3>
-                <p className="text-slate-500 text-xs">
-                  Please log in or create a recipient account to claim food or leave reviews.
+              <div className="space-y-2">
+                <h3 className="text-2xl font-black text-slate-900">
+                  Sign In to Reserve Food
+                </h3>
+                <p className="text-slate-600 text-xs sm:text-sm leading-relaxed">
+                  Join BiteShare to reserve surplus food and help prevent food waste.
                 </p>
               </div>
 
-              <div className="space-y-2 pt-1">
+              <div className="space-y-3 pt-2">
                 <Link
-                  href="/signup"
-                  className="w-full py-3 px-4 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-xl transition flex items-center justify-center gap-2"
+                  href="/signup?role=RECIPIENT"
+                  className="block w-full py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs sm:text-sm rounded-2xl shadow-md transition flex items-center justify-center gap-2"
                 >
                   <UserPlus className="w-4 h-4" />
-                  <span>Create Account</span>
+                  Create Recipient Account
                 </Link>
 
                 <Link
                   href="/login"
-                  className="w-full py-3 px-4 bg-slate-100 hover:bg-slate-200 text-slate-800 font-extrabold text-xs rounded-xl transition flex items-center justify-center gap-2"
+                  className="block w-full py-3.5 bg-slate-100 hover:bg-slate-200 text-slate-800 font-extrabold text-xs sm:text-sm rounded-2xl transition flex items-center justify-center gap-2"
                 >
-                  <LogIn className="w-4 h-4 text-emerald-600" />
-                  <span>Log In</span>
+                  <LogIn className="w-4 h-4" />
+                  Log In to Existing Account
                 </Link>
               </div>
             </motion.div>
-          </div>
+          </motion.div>
         )}
       </AnimatePresence>
     </div>
