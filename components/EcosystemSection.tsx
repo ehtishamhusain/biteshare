@@ -102,10 +102,12 @@ export default function EcosystemSection() {
                 <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
                 <span>Zero signup or monthly listing fees</span>
               </li>
+              {/*
               <li className="flex items-center gap-2">
                 <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
                 <span>Direct weekly bank/UPI payouts</span>
-              </li>
+              </li>*/
+              }
             </ul>
           </motion.div>
 
@@ -137,7 +139,7 @@ export default function EcosystemSection() {
 
             <div className="pt-4 border-t border-emerald-800 text-xs text-emerald-200 font-semibold flex items-center gap-2">
               <ShieldCheck className="w-4 h-4 text-emerald-400 flex-shrink-0" />
-              <span>Keeps BiteShare independent & ad-free</span>
+              <span>Keeps BiteShare independent</span>
             </div>
           </motion.div>
 
@@ -166,13 +168,14 @@ export default function EcosystemSection() {
             </div>
 
             <ul className="space-y-2 pt-4 border-t border-slate-200 text-xs text-slate-600 font-medium">
+
               <li className="flex items-center gap-2">
                 <CheckCircle2 className="w-4 h-4 text-amber-600 flex-shrink-0" />
                 <span>Priority notification to local shelters</span>
               </li>
               <li className="flex items-center gap-2">
                 <CheckCircle2 className="w-4 h-4 text-amber-600 flex-shrink-0" />
-                <span>Tax-deductible waste certificate log</span>
+                <span>Verified Community Impact Certificate Log</span>
               </li>
             </ul>
           </motion.div>

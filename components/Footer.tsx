@@ -197,7 +197,7 @@ export default function Footer() {
                 </div>
                 <div className="flex items-center gap-2 text-slate-300">
                   <Mail className="w-3.5 h-3.5 text-emerald-400" />
-                  <span>support@biteshare.app</span>
+                  <span>support@biteshare.in</span>
                 </div>
               </div>
             </div>

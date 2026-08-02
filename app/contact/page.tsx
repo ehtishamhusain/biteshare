@@ -173,7 +173,7 @@ export default function ContactPage() {
                       Email Support
                     </h4>
                     <p className="text-sm font-extrabold text-slate-900 mt-0.5">
-                      support@biteshare.app
+                      support@biteshare.in
                     </p>
                     <p className="text-xs text-slate-500 font-medium">
                       For general queries & partnerships

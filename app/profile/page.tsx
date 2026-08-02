@@ -307,7 +307,7 @@ export default function ProfilePage() {
                       required
                       value={fullName}
                       onChange={(e) => setFullName(e.target.value)}
-                      placeholder="e.g. Ehtisham Husain"
+                      placeholder="e.g. Faizan"
                       className="w-full px-4 py-3 pl-10 rounded-xl border border-slate-200 focus:ring-2 focus:ring-emerald-500 outline-none text-sm text-slate-800 bg-slate-50/50"
                     />
                     <User className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
@@ -362,7 +362,7 @@ export default function ProfilePage() {
                     required
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}
-                    placeholder="+91 98765 43210"
+                    placeholder="+91 9876543210"
                     className="w-full px-4 py-3 pl-10 rounded-xl border border-slate-200 focus:ring-2 focus:ring-emerald-500 outline-none text-sm text-slate-800 bg-slate-50/50"
                   />
                   <Phone className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
@@ -406,7 +406,7 @@ export default function ProfilePage() {
                     required
                     value={streetAddress}
                     onChange={(e) => setStreetAddress(e.target.value)}
-                    placeholder="House #12, Civil Lines"
+                    placeholder="e.g. House #12, Civil Lines"
                     className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-emerald-500 outline-none text-sm text-slate-800 bg-slate-50/50"
                   />
                 </div>
@@ -421,7 +421,7 @@ export default function ProfilePage() {
                       required
                       value={city}
                       onChange={(e) => setCity(e.target.value)}
-                      placeholder="Bareilly"
+                      placeholder="e.g. Bareilly"
                       className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-emerald-500 outline-none text-sm text-slate-800 bg-slate-50/50"
                     />
                   </div>
@@ -435,7 +435,7 @@ export default function ProfilePage() {
                       required
                       value={state}
                       onChange={(e) => setState(e.target.value)}
-                      placeholder="Uttar Pradesh"
+                      placeholder="e.g. Uttar Pradesh"
                       className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-emerald-500 outline-none text-sm text-slate-800 bg-slate-50/50"
                     />
                   </div>
@@ -457,7 +457,7 @@ export default function ProfilePage() {
                         const numericOnly = e.target.value.replace(/\D/g, '').slice(0, 6);
                         setPincode(numericOnly);
                       }}
-                      placeholder="243001"
+                      placeholder="e.g. 223001"
                       className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-emerald-500 outline-none text-sm text-slate-800 bg-slate-50/50 tracking-wider font-mono"
                     />
                   </div>
@@ -472,7 +472,7 @@ export default function ProfilePage() {
                         required
                         value={country}
                         onChange={(e) => setCountry(e.target.value)}
-                        placeholder="India"
+                        placeholder="e.g. India"
                         className="w-full px-4 py-3 pl-10 rounded-xl border border-slate-200 focus:ring-2 focus:ring-emerald-500 outline-none text-sm text-slate-800 bg-slate-50/50"
                       />
                       <Globe className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />

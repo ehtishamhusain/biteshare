@@ -445,7 +445,7 @@ export default function DonorDashboardPage() {
                       descriptionRef.current?.focus();
                     }
                   }}
-                  placeholder="e.g. Fresh Veg Biryani & Paneer Meal Trays"
+                  placeholder="e.g. Veg Biryani x250g"
                   className="w-full px-4 py-3 rounded-2xl border border-slate-200 focus:ring-2 focus:ring-emerald-500 outline-none text-xs sm:text-sm text-slate-800 bg-slate-50/50"
                 />
               </div>
@@ -673,7 +673,7 @@ export default function DonorDashboardPage() {
 
               <div>
                 <label className="block text-[11px] font-bold uppercase text-slate-500 mb-1">
-                  Full Compiled Pickup Address
+                  Complete Pickup Address
                 </label>
                 <input
                   type="text"

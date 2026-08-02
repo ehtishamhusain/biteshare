@@ -547,10 +547,10 @@ export default function AboutPage() {
             
             <div className="space-y-2 max-w-2xl mx-auto">
               <h2 className="text-2xl sm:text-4xl font-black tracking-tight">
-                Help Us End Local Hunger
+                Help Us End Local Hunger and Food Waste
               </h2>
               <p className="text-emerald-100 text-xs sm:text-sm font-medium">
-                Whether you are a bakery owner with surplus bread or a neighbor looking for fresh, affordable meals—BiteShare is built for you.
+                Whether you are a bakery owner with surplus bread, an NGO working to support those in need, or a neighbour looking for fresh, affordable meals—BiteShare is built for you.
               </p>
             </div>
 

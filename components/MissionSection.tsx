@@ -158,7 +158,7 @@ export default function MissionSection() {
 
             <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 text-xs font-semibold text-emerald-900 flex items-center gap-3">
               <TrendingDown className="w-5 h-5 text-emerald-600 flex-shrink-0" />
-              <span>Diverts 100% of edible surplus away from dumpsters into kitchens.</span>
+              <span>Diverts edible surplus away from dumpsters into kitchens.</span>
             </div>
           </motion.div>
 
