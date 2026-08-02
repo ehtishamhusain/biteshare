@@ -46,8 +46,25 @@ export default function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
+  // 🏷️ Brand Schema (JSON-LD) for #1 Rank Authority on Google Search
+  const jsonLd = {
+    '@context': 'https://schema.org',
+    '@type': 'WebSite',
+    name: 'BiteShare',
+    alternateName: ['Bite Share', 'BiteShare Network'],
+    url: 'https://biteshare.in',
+    description:
+      'Connect with local food donors, restaurants, and shelters to rescue fresh surplus food in real time.',
+  };
+
   return (
     <html lang="en">
+      <head>
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+        />
+      </head>
       <body className={`${inter.className} min-h-screen flex flex-col bg-slate-50 antialiased`}>
         {/* Conditional Header Wrapper */}
         <NavbarWrapper />
