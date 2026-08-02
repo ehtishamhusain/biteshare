@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import { motion, Variants } from 'framer-motion';
 import {
   ShieldCheck,
@@ -16,7 +17,9 @@ import {
   Ban,
   Store,
   KeyRound,
-  Award,
+  Copy,
+  Check,
+  ExternalLink,
 } from 'lucide-react';
 
 const fadeInUp: Variants = {
@@ -37,6 +40,14 @@ const staggerContainer: Variants = {
 };
 
 export default function TermsPage() {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopyEmail = () => {
+    navigator.clipboard.writeText('support@biteshare.in');
+    setCopied(true);
+    setTimeout(() => setCopied(false), 3000);
+  };
+
   const sections = [
     { id: 'quality', label: '1. Fresh Food & Hygiene Standards' },
     { id: 'payment-fee', label: '2. 12% Fee & Direct Counter Payment' },
@@ -214,13 +225,13 @@ export default function TermsPage() {
               </p>
               <div className="space-y-2 text-xs text-slate-600">
                 <div className="flex items-start gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0 mt-0.5" />
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
                   <span>
                     <strong className="text-slate-900">Strict Window Adherence:</strong> Recipients must arrive at the store within the specific pickup window close time shown on their reservation ticket.
                   </span>
                 </div>
                 <div className="flex items-start gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0 mt-0.5" />
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
                   <span>
                     <strong className="text-slate-900">4-Digit Security PIN:</strong> Store counter staff will request your unique 4-digit claim PIN before releasing the food parcel.
                   </span>
@@ -290,21 +301,28 @@ export default function TermsPage() {
               </p>
             </section>
 
-            {/* Footer Questions Box */}
+            {/* Footer Contact Box with Interactive Copy & Web Gmail Actions */}
             <div className="pt-6 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-4 bg-slate-50 p-6 rounded-3xl">
               <div className="flex items-center gap-3">
-                <HelpCircle className="w-6 h-6 text-emerald-600 flex-shrink-0" />
+                <HelpCircle className="w-6 h-6 text-emerald-600 shrink-0" />
                 <div>
                   <span className="block font-bold text-xs text-slate-900">Have questions about our Terms of Service?</span>
-                  <span className="text-xs text-slate-500">Contact our legal and safety compliance team.</span>
+                  <span className="text-xs text-slate-500">Contact our legal team at <strong className="text-emerald-700">support@biteshare.in</strong></span>
                 </div>
               </div>
-              <a
-                href="mailto:support@biteshare.in"
-                className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl font-bold text-xs transition shadow-xs whitespace-nowrap"
-              >
-                Contact Legal Support
-              </a>
+
+              <div className="flex items-center gap-2 shrink-0 w-full sm:w-auto">
+                <a
+                  href="https://mail.google.com/mail/?view=cm&fs=1&to=support@biteshare.in&su=Legal%20Inquiry%20-%20BiteShare"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl font-bold text-xs transition shadow-xs flex items-center justify-center gap-1.5 flex-1 sm:flex-initial"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  <span>Open Gmail</span>
+                </a>
+                
+              </div>
             </div>
 
           </motion.div>

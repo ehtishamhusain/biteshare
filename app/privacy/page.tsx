@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import { motion, Variants } from 'framer-motion';
 import {
   Shield,
@@ -17,7 +18,9 @@ import {
   IndianRupee,
   Award,
   KeyRound,
-  Receipt,
+  Copy,
+  Check,
+  ExternalLink,
 } from 'lucide-react';
 
 const fadeInUp: Variants = {
@@ -38,6 +41,14 @@ const staggerContainer: Variants = {
 };
 
 export default function PrivacyPage() {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopyEmail = () => {
+    navigator.clipboard.writeText('support@biteshare.in');
+    setCopied(true);
+    setTimeout(() => setCopied(false), 3000);
+  };
+
   const sections = [
     { id: 'collection', label: '1. Information We Collect' },
     { id: 'location', label: '2. Geolocation & Auto GPS' },
@@ -340,21 +351,28 @@ export default function PrivacyPage() {
               </ul>
             </section>
 
-            {/* Footer Contact Box */}
+            {/* Footer Contact Box with Interactive Copy & Web Gmail Actions */}
             <div className="pt-6 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-4 bg-slate-50 p-6 rounded-3xl">
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-3"> 
                 <HelpCircle className="w-6 h-6 text-emerald-600 shrink-0" />
                 <div>
-                  <span className="block font-bold text-xs text-slate-900">Questions about our Privacy Policy?</span>
-                  <span className="text-xs text-slate-500">Contact our platform data protection officer.</span>
+                  <span className="block font-bold text-xs text-slate-900">Have questions about our Privacy Policy?</span>
+                  <span className="text-xs text-slate-500">Contact our platform data protection officer at <strong className="text-emerald-700">support@biteshare.in</strong></span>
                 </div>
               </div>
-              <a
-                href="mailto:support@biteshare.in"
-                className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl font-bold text-xs transition shadow-xs whitespace-nowrap"
-              >
-                Email Privacy Team
-              </a>
+
+              <div className="flex items-center gap-2 shrink-0 w-full sm:w-auto">
+                <a
+                  href="https://mail.google.com/mail/?view=cm&fs=1&to=support@biteshare.in&su=Privacy%20Inquiry%20-%20BiteShare"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl font-bold text-xs transition shadow-xs flex items-center justify-center gap-1.5 flex-1 sm:flex-initial"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  <span>Open Gmail</span>
+                </a>
+
+              </div>
             </div>
 
           </motion.div>
