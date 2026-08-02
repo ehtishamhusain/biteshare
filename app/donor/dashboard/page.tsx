@@ -2,18 +2,15 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
-import { motion, AnimatePresence } from 'framer-motion';
 import {
   PlusCircle,
   Utensils,
   Clock,
-  Tag,
   CheckCircle2,
   Trash2,
   RefreshCw,
   AlertCircle,
   MapPin,
-  Sparkles,
   ShoppingBag,
   Flame,
   Navigation,
@@ -27,7 +24,7 @@ export default function DonorDashboardPage() {
   // Store profile state
   const [donorProfile, setDonorProfile] = useState<any>(null);
 
-  // Focus ref for smooth field navigation
+  // Focus ref for smooth Enter key navigation
   const descriptionRef = useRef<HTMLTextAreaElement>(null);
 
   // Food Form States
@@ -51,7 +48,9 @@ export default function DonorDashboardPage() {
   // Dynamic Lat/Lng
   const [latitude, setLatitude] = useState<number | null>(null);
   const [longitude, setLongitude] = useState<number | null>(null);
+  const [isGpsCaptured, setIsGpsCaptured] = useState(false);
   const [detectingLocation, setDetectingLocation] = useState(false);
+  const [geocodingAddress, setGeocodingAddress] = useState(false);
 
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
@@ -69,6 +68,9 @@ export default function DonorDashboardPage() {
   useEffect(() => {
     fetchDonorProfileAndBundles();
 
+    // 🚀 AUTOMATIC BACKGROUND GPS REQUEST ON PAGE LOAD
+    autoDetectGpsLocation();
+
     const channel = supabase
       .channel('donor_my_bundles_sync')
       .on(
@@ -83,6 +85,23 @@ export default function DonorDashboardPage() {
     };
   }, []);
 
+  // 🚀 Quiet Background GPS Auto-Detection
+  const autoDetectGpsLocation = () => {
+    if (typeof window !== 'undefined' && navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          setLatitude(position.coords.latitude);
+          setLongitude(position.coords.longitude);
+          setIsGpsCaptured(true);
+        },
+        (err) => {
+          console.log('Background GPS auto-detection info:', err.message);
+        },
+        { enableHighAccuracy: true, timeout: 8000 }
+      );
+    }
+  };
+
   const fetchDonorProfileAndBundles = async () => {
     const {
       data: { user },
@@ -96,7 +115,7 @@ export default function DonorDashboardPage() {
         .maybeSingle();
 
       if (profile) {
-        setDonorProfile(profile); // Stores profile in state
+        setDonorProfile(profile);
 
         const street = profile.street_address || profile.address || '';
         const c = profile.city || '';
@@ -110,10 +129,10 @@ export default function DonorDashboardPage() {
         setStateVal(st);
         setCountry(cntry);
 
-        if (profile.latitude && !isNaN(Number(profile.latitude))) {
+        if (profile.latitude && !isNaN(Number(profile.latitude)) && !latitude) {
           setLatitude(Number(profile.latitude));
         }
-        if (profile.longitude && !isNaN(Number(profile.longitude))) {
+        if (profile.longitude && !isNaN(Number(profile.longitude)) && !longitude) {
           setLongitude(Number(profile.longitude));
         }
 
@@ -150,7 +169,7 @@ export default function DonorDashboardPage() {
     setLoadingList(false);
   };
 
-  // 📍 GPS Live Geolocation Button Handler
+  // 📍 GPS Live Geolocation Button Handler (Manual Trigger)
   const handleGetGpsLocation = () => {
     if (typeof window === 'undefined' || !navigator.geolocation) {
       setMessage({ text: 'Geolocation is not supported by your browser.', type: 'error' });
@@ -166,6 +185,7 @@ export default function DonorDashboardPage() {
         const lng = position.coords.longitude;
         setLatitude(lat);
         setLongitude(lng);
+        setIsGpsCaptured(true);
 
         try {
           const res = await fetch(
@@ -174,8 +194,8 @@ export default function DonorDashboardPage() {
           const data = await res.json();
           if (data && data.address) {
             const addr = data.address;
-            const road = [addr.road, addr.suburb, addr.neighbourhood].filter(Boolean).join(', ');
-            const detectedCity = addr.city || addr.town || addr.village || '';
+            const road = [addr.road, addr.suburb, addr.neighbourhood, addr.amenity].filter(Boolean).join(', ');
+            const detectedCity = addr.city || addr.town || addr.village || addr.county || '';
             const detectedPin = addr.postcode || '';
             const detectedState = addr.state || '';
             const detectedCountry = addr.country || '';
@@ -195,7 +215,7 @@ export default function DonorDashboardPage() {
           console.log('Reverse geocoding error:', err);
         }
 
-        setMessage({ text: '📍 Live GPS coordinates & address attached!', type: 'success' });
+        setMessage({ text: `📍 GPS Captured: ${lat.toFixed(4)}, ${lng.toFixed(4)}`, type: 'success' });
         setDetectingLocation(false);
       },
       (error) => {
@@ -204,6 +224,25 @@ export default function DonorDashboardPage() {
       },
       { enableHighAccuracy: true, timeout: 10000 }
     );
+  };
+
+  // 🚀 Auto-Geocode Address String whenever user manually edits address
+  const handleManualAddressChange = (type: string, val: string) => {
+    setIsGpsCaptured(false);
+    if (type === 'street') setStreetAddress(val);
+    if (type === 'city') setCity(val);
+    if (type === 'pincode') setPincode(val);
+    if (type === 'state') setStateVal(val);
+    if (type === 'country') setCountry(val);
+
+    const updatedStreet = type === 'street' ? val : streetAddress;
+    const updatedCity = type === 'city' ? val : city;
+    const updatedPin = type === 'pincode' ? val : pincode;
+    const updatedState = type === 'state' ? val : stateVal;
+    const updatedCountry = type === 'country' ? val : country;
+
+    const compiled = [updatedStreet, updatedCity, updatedPin, updatedState, updatedCountry].filter(Boolean).join(', ');
+    setFullPickupAddress(compiled);
   };
 
   const geocodeAddressString = async (addressQuery: string) => {
@@ -264,13 +303,9 @@ export default function DonorDashboardPage() {
     const finalQty = quantity === '' ? 1 : Number(quantity);
     const finalPricePerItem = pricePerItem === '' ? 0 : Number(pricePerItem);
 
-    // Calculate standard total price (Qty * Unit Price)
     const finalStdTotalPrice = finalQty * finalPricePerItem;
-
-    // Bulk discount price set by donor
     const finalBulkDiscountPrice = bundlePrice === '' ? finalStdTotalPrice : Number(bundlePrice);
 
-    // Get exact store name from donor profile
     const storeName =
       donorProfile?.organization_name ||
       donorProfile?.full_name ||
@@ -281,10 +316,12 @@ export default function DonorDashboardPage() {
       [streetAddress, city, pincode, stateVal, country].filter(Boolean).join(', ') ||
       'Store Location';
 
+    // 🚀 AUTOMATIC COORDINATE CATCHING (Even if button was never clicked)
     let finalLat = latitude;
     let finalLng = longitude;
 
-    if (!finalLat || !finalLng) {
+    if (!finalLat || !finalLng || !isGpsCaptured) {
+      setGeocodingAddress(true);
       const searchQuery = [streetAddress, city, stateVal, country].filter(Boolean).join(', ') || city;
       if (searchQuery) {
         const geoResult = await geocodeAddressString(searchQuery);
@@ -293,10 +330,11 @@ export default function DonorDashboardPage() {
           finalLng = geoResult.lng;
         }
       }
+      setGeocodingAddress(false);
     }
 
-    const verifiedLat = finalLat !== null && !isNaN(Number(finalLat)) ? Number(finalLat) : 28.3670;
-    const verifiedLng = finalLng !== null && !isNaN(Number(finalLng)) ? Number(finalLng) : 79.4304;
+    const verifiedLat = finalLat !== null && !isNaN(Number(finalLat)) ? Number(finalLat) : (donorProfile?.latitude ? Number(donorProfile.latitude) : 28.3670);
+    const verifiedLng = finalLng !== null && !isNaN(Number(finalLng)) ? Number(finalLng) : (donorProfile?.longitude ? Number(donorProfile.longitude) : 79.4304);
 
     const newBundlePayload = {
       donor_id: user.id,
@@ -308,8 +346,8 @@ export default function DonorDashboardPage() {
       quantity_remaining: finalQty,
       price_per_item: finalPricePerItem,
       price: finalPricePerItem,
-      total_price: finalStdTotalPrice,        // Standard Total
-      bulk_discount_price: finalBulkDiscountPrice, // Bulk Discount Total
+      total_price: finalStdTotalPrice,
+      bulk_discount_price: finalBulkDiscountPrice,
       address: finalAddress,
       city: city.trim() || 'Bareilly',
       pincode: pincode.trim(),
@@ -335,6 +373,7 @@ export default function DonorDashboardPage() {
       setBundlePrice(200);
       setIsManualEdited(false);
       setPickupEnd('');
+      setIsGpsCaptured(false);
 
       fetchPublishedBundles();
     }
@@ -539,7 +578,7 @@ export default function DonorDashboardPage() {
                     <MapPin className="w-4 h-4 text-emerald-600" /> Pickup Location Details
                   </h3>
                   <p className="text-[11px] text-slate-500">
-                    Pre-filled directly from your user profile.
+                    Coordinates are automatically caught in the background or calculated from your address.
                   </p>
                 </div>
 
@@ -557,7 +596,7 @@ export default function DonorDashboardPage() {
                   ) : (
                     <>
                       <Navigation className="w-3.5 h-3.5 text-emerald-600" />
-                      <span>Use GPS Location</span>
+                      <span>Refresh GPS Location</span>
                     </>
                   )}
                 </button>
@@ -572,11 +611,7 @@ export default function DonorDashboardPage() {
                     type="text"
                     required
                     value={streetAddress}
-                    onChange={(e) => {
-                      const v = e.target.value;
-                      setStreetAddress(v);
-                      setFullPickupAddress([v, city, pincode, stateVal, country].filter(Boolean).join(', '));
-                    }}
+                    onChange={(e) => handleManualAddressChange('street', e.target.value)}
                     placeholder="e.g. Connaught Place, Shop #12"
                     className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-emerald-500 outline-none text-xs font-semibold text-slate-800 bg-slate-50/50"
                   />
@@ -590,11 +625,7 @@ export default function DonorDashboardPage() {
                     type="text"
                     required
                     value={city}
-                    onChange={(e) => {
-                      const v = e.target.value;
-                      setCity(v);
-                      setFullPickupAddress([streetAddress, v, pincode, stateVal, country].filter(Boolean).join(', '));
-                    }}
+                    onChange={(e) => handleManualAddressChange('city', e.target.value)}
                     placeholder="e.g. Delhi"
                     className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-emerald-500 outline-none text-xs font-semibold text-slate-800 bg-slate-50/50"
                   />
@@ -607,11 +638,7 @@ export default function DonorDashboardPage() {
                   <input
                     type="text"
                     value={pincode}
-                    onChange={(e) => {
-                      const v = e.target.value;
-                      setPincode(v);
-                      setFullPickupAddress([streetAddress, city, v, stateVal, country].filter(Boolean).join(', '));
-                    }}
+                    onChange={(e) => handleManualAddressChange('pincode', e.target.value)}
                     placeholder="e.g. 110001"
                     className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-emerald-500 outline-none text-xs font-semibold text-slate-800 bg-slate-50/50"
                   />
@@ -624,11 +651,7 @@ export default function DonorDashboardPage() {
                   <input
                     type="text"
                     value={stateVal}
-                    onChange={(e) => {
-                      const v = e.target.value;
-                      setStateVal(v);
-                      setFullPickupAddress([streetAddress, city, pincode, v, country].filter(Boolean).join(', '));
-                    }}
+                    onChange={(e) => handleManualAddressChange('state', e.target.value)}
                     placeholder="e.g. Delhi"
                     className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-emerald-500 outline-none text-xs font-semibold text-slate-800 bg-slate-50/50"
                   />
@@ -641,11 +664,7 @@ export default function DonorDashboardPage() {
                   <input
                     type="text"
                     value={country}
-                    onChange={(e) => {
-                      const v = e.target.value;
-                      setCountry(v);
-                      setFullPickupAddress([streetAddress, city, pincode, stateVal, v].filter(Boolean).join(', '));
-                    }}
+                    onChange={(e) => handleManualAddressChange('country', e.target.value)}
                     placeholder="e.g. India"
                     className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-emerald-500 outline-none text-xs font-semibold text-slate-800 bg-slate-50/50"
                   />
@@ -660,27 +679,45 @@ export default function DonorDashboardPage() {
                   type="text"
                   required
                   value={fullPickupAddress}
-                  onChange={(e) => setFullPickupAddress(e.target.value)}
+                  onChange={(e) => {
+                    setFullPickupAddress(e.target.value);
+                    setIsGpsCaptured(false);
+                  }}
                   placeholder="Full store location displayed to buyers..."
                   className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-emerald-500 outline-none text-xs font-semibold text-slate-800 bg-slate-50/50"
                 />
               </div>
 
+              {/* 🟢 AUTOMATIC COORDINATE DETECTED BADGE */}
               {latitude && longitude && (
-                <div className="text-[10px] text-emerald-700 font-bold flex items-center gap-1">
-                  <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-                  <span>GPS Lat/Lng Coordinates Attached: {Number(latitude).toFixed(4)}, {Number(longitude).toFixed(4)}</span>
+                <div className="text-[10px] text-emerald-700 font-bold flex items-center gap-1.5 bg-emerald-50 p-2.5 rounded-xl border border-emerald-200">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+                  <span>
+                    {isGpsCaptured
+                      ? '⚡ Live Background GPS Coordinates Caught: '
+                      : '📍 Auto Geocoded Coordinates Attached: '}
+                    <strong>{Number(latitude).toFixed(4)}, {Number(longitude).toFixed(4)}</strong>
+                  </span>
                 </div>
               )}
             </div>
 
             <button
               type="submit"
-              disabled={submitting}
+              disabled={submitting || geocodingAddress}
               className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold py-3.5 px-6 rounded-2xl transition shadow-md flex items-center justify-center gap-2 text-xs sm:text-sm disabled:opacity-50"
             >
-              <PlusCircle className="w-4 h-4" />
-              <span>{submitting ? 'Publishing Food Item...' : 'Publish Surplus Bundle'}</span>
+              {submitting || geocodingAddress ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin text-white" />
+                  <span>{geocodingAddress ? 'Catching Location Coordinates...' : 'Publishing Food Item...'}</span>
+                </>
+              ) : (
+                <>
+                  <PlusCircle className="w-4 h-4" />
+                  <span>Publish Surplus Bundle</span>
+                </>
+              )}
             </button>
           </form>
         </div>
