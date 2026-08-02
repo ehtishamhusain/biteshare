@@ -33,6 +33,9 @@ import {
   X,
   ExternalLink,
   CheckCircle,
+  CreditCard,
+  Calculator,
+  Wallet,
   AlertCircle,
 } from 'lucide-react';
 
@@ -42,16 +45,20 @@ export default function AdminFinancePage() {
   const [claims, setClaims] = useState<any[]>([]);
 
   // Navigation Tab State
-  const [activeTab, setActiveTab] = useState<'TRANSACTIONS' | 'RESTAURANTS'>('TRANSACTIONS');
+  const [activeTab, setActiveTab] = useState<'TRANSACTIONS' | 'RESTAURANTS'>('RESTAURANTS');
 
   // Search & Filter States
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'COMPLETED' | 'PENDING' | 'CANCELLED' | 'EXPIRED'>('ALL');
   const [dateFilter, setDateFilter] = useState<'ALL' | 'TODAY' | 'WEEK' | 'MONTH'>('ALL');
 
-  // Fee Request Modal & Settlement States
+  // Email Modal States
   const [selectedStoreForEmail, setSelectedStoreForEmail] = useState<any | null>(null);
   const [copiedType, setCopiedType] = useState<'INVOICE' | 'EMAIL' | null>(null);
+
+  // Partial Payment Settlement States (FIFO Modal)
+  const [paymentModalStore, setPaymentModalStore] = useState<any | null>(null);
+  const [paymentInputAmount, setPaymentInputAmount] = useState<string>('');
   const [settlingStoreId, setSettlingStoreId] = useState<string | null>(null);
   const [settlementSuccessMsg, setSettlementSuccessMsg] = useState<string | null>(null);
 
@@ -252,9 +259,9 @@ export default function AdminFinancePage() {
           completedOrders: 0,
           grossGMV: 0,
           donorEarnings: 0,
-          totalPlatformFee: 0,    // Total 12% Fee
-          platformFeeDue: 0,      // Unpaid 12% Fee
-          settledFeeTotal: 0,     // Paid 12% Fee
+          totalPlatformFee: 0,    // Total 12% Fee Earned
+          platformFeeDue: 0,      // Rolling Unpaid Balance
+          settledFeeTotal: 0,     // Total Settled/Paid Fee
           unpaidClaimIds: [] as string[],
         });
       }
@@ -280,29 +287,113 @@ export default function AdminFinancePage() {
       }
     });
 
-    return Array.from(map.values()).sort((a, b) => b.totalPlatformFee - a.totalPlatformFee);
+    return Array.from(map.values()).sort((a, b) => b.platformFeeDue - a.platformFeeDue);
   }, [filteredClaims]);
 
-  // Mark Platform Fee as Paid for a specific restaurant
-  const handleMarkFeeAsPaid = async (store: any) => {
-    if (!store.unpaidClaimIds || store.unpaidClaimIds.length === 0) return;
+  // Total Outstanding Rolling Balance Across All Stores
+  const totalGlobalRollingDue = useMemo(() => {
+    return restaurantLedger.reduce((acc, store) => acc + store.platformFeeDue, 0);
+  }, [restaurantLedger]);
 
-    setSettlingStoreId(store.donorId);
+  const totalGlobalSettledFees = useMemo(() => {
+    return restaurantLedger.reduce((acc, store) => acc + store.settledFeeTotal, 0);
+  }, [restaurantLedger]);
+
+  // Open Payment Modal
+  const handleOpenPaymentModal = (store: any) => {
+    setPaymentModalStore(store);
+    setPaymentInputAmount(store.platformFeeDue.toFixed(2));
+  };
+
+  // FIFO (First-In, First-Out) Partial Payment Settlement Engine
+  const handleSettleDonorFeesFIFO = async (donorId: string, amountToPay: number) => {
+    if (amountToPay <= 0) {
+      alert('Please enter a valid payment amount greater than 0.');
+      return;
+    }
+
+    setSettlingStoreId(donorId);
     setSettlementSuccessMsg(null);
 
-    const { error } = await supabase
-      .from('claims')
-      .update({ is_fee_paid: true })
-      .in('id', store.unpaidClaimIds);
+    try {
+      // 1. Query food bundle IDs published by this donor
+      const { data: donorBundles } = await supabase
+        .from('food_bundles')
+        .select('id')
+        .eq('donor_id', donorId);
 
-    if (error) {
-      alert('Failed to settle fee: ' + error.message);
-    } else {
-      setSettlementSuccessMsg(`🎉 Outstanding fee of ₹${store.platformFeeDue.toFixed(2)} marked as PAID for ${store.restaurantName}!`);
-      setTimeout(() => setSettlementSuccessMsg(null), 4000);
+      const bundleIds = donorBundles ? donorBundles.map((b) => b.id) : [];
+
+      if (!bundleIds || bundleIds.length === 0) {
+        alert('No food bundles found for this store.');
+        setSettlingStoreId(null);
+        return;
+      }
+
+      // 2. Query unpaid claims ordered by created_at ASC (Oldest Claims First -> FIFO)
+      const { data: unpaidClaims, error: fetchErr } = await supabase
+        .from('claims')
+        .select('id, total_price, platform_fee, created_at')
+        .eq('is_fee_paid', false)
+        .in('bundle_id', bundleIds)
+        .in('status', ['COMPLETED', 'PENDING'])
+        .order('created_at', { ascending: true });
+
+      if (fetchErr) throw fetchErr;
+
+      if (!unpaidClaims || unpaidClaims.length === 0) {
+        alert('No unpaid claims found for this store.');
+        setSettlingStoreId(null);
+        return;
+      }
+
+      let remainingToSettle = amountToPay;
+      const claimsToMarkPaid: string[] = [];
+
+      // 3. FIFO Loop: Mark oldest claims paid until payment amount is exhausted
+      for (const claim of unpaidClaims) {
+        if (remainingToSettle <= 0) break;
+
+        const fee = claim.platform_fee !== null && claim.platform_fee !== undefined
+          ? Number(claim.platform_fee)
+          : Number(claim.total_price || 0) * 0.12;
+
+        if (remainingToSettle >= fee - 0.01) {
+          claimsToMarkPaid.push(claim.id);
+          remainingToSettle -= fee;
+        } else {
+          // Break if remaining payment cannot cover the next full claim fee
+          break;
+        }
+      }
+
+      if (claimsToMarkPaid.length === 0) {
+        alert(`Entered amount (₹${amountToPay}) is lower than the smallest unpaid claim fee. Please enter a higher amount.`);
+        setSettlingStoreId(null);
+        return;
+      }
+
+      // 4. Batch update database
+      const { error: updateErr } = await supabase
+        .from('claims')
+        .update({ is_fee_paid: true })
+        .in('id', claimsToMarkPaid);
+
+      if (updateErr) throw updateErr;
+
+      setSettlementSuccessMsg(
+        `🎉 Successfully settled ₹${amountToPay.toFixed(2)} across ${claimsToMarkPaid.length} order(s) for ${paymentModalStore?.restaurantName}!`
+      );
+      setTimeout(() => setSettlementSuccessMsg(null), 5000);
+
+      setPaymentModalStore(null);
       checkAdminAndFetchData();
+    } catch (err: any) {
+      console.error('Failed to settle fee payment:', err);
+      alert('Failed to settle fee payment: ' + err.message);
+    } finally {
+      setSettlingStoreId(null);
     }
-    setSettlingStoreId(null);
   };
 
   // Financial Metrics Calculations
@@ -430,7 +521,7 @@ Below is your official surplus food sales summary and platform fee billing state
 • Total Orders Processed: ${store.totalOrders} order(s)
 • Gross Sales Volume (GMV): ₹${store.grossGMV.toFixed(2)}
 • Your Net Store Earnings (88%): ₹${store.donorEarnings.toFixed(2)}
-• BiteShare Platform Fee (12%): ₹${feeToPay.toFixed(2)} (${store.platformFeeDue === 0 ? 'PAID ✓' : 'DUE UNPAID'})
+• BiteShare Platform Fee (12%): ₹${feeToPay.toFixed(2)} (${store.platformFeeDue === 0 ? 'PAID ✓' : 'DUE UNPAID ROLLING BALANCE'})
 --------------------------------------------------
 
 💳 PAYMENT INSTRUCTIONS:
@@ -518,7 +609,7 @@ support@biteshare.in | https://biteshare.in`;
               BiteShare Financial Ledger
             </h1>
             <p className="text-slate-500 text-xs sm:text-sm">
-              Live audit of all reservations, platform commission breakdown (12%), and store payouts (88%).
+              Live audit of all reservations, platform commission breakdown (12%), and rolling fee settlement.
             </p>
           </div>
 
@@ -558,7 +649,7 @@ support@biteshare.in | https://biteshare.in`;
               ₹{metrics.totalPlatformFees.toFixed(2)}
             </div>
             <p className="text-[11px] text-emerald-100 font-medium pt-1 border-t border-white/10">
-              Net platform commission collected
+              Net platform commission accrued
             </p>
           </div>
 
@@ -606,6 +697,18 @@ support@biteshare.in | https://biteshare.in`;
         {/* VIEW SWITCHER TABS */}
         <div className="flex items-center gap-2 p-1.5 bg-slate-200/80 rounded-2xl border border-slate-300 w-full sm:w-auto self-start">
           <button
+            onClick={() => setActiveTab('RESTAURANTS')}
+            className={`px-5 py-2.5 rounded-xl text-xs font-extrabold transition flex items-center gap-2 ${
+              activeTab === 'RESTAURANTS'
+                ? 'bg-white text-slate-900 shadow-sm'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <Store className="w-4 h-4 text-emerald-600" />
+            <span>Restaurant Fee Ledger & Rolling Balance ({restaurantLedger.length})</span>
+          </button>
+
+          <button
             onClick={() => setActiveTab('TRANSACTIONS')}
             className={`px-5 py-2.5 rounded-xl text-xs font-extrabold transition flex items-center gap-2 ${
               activeTab === 'TRANSACTIONS'
@@ -616,21 +719,187 @@ support@biteshare.in | https://biteshare.in`;
             <Receipt className="w-4 h-4 text-emerald-600" />
             <span>Order Audit Log</span>
           </button>
-
-          <button
-            onClick={() => setActiveTab('RESTAURANTS')}
-            className={`px-5 py-2.5 rounded-xl text-xs font-extrabold transition flex items-center gap-2 ${
-              activeTab === 'RESTAURANTS'
-                ? 'bg-white text-slate-900 shadow-sm'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            <Store className="w-4 h-4 text-emerald-600" />
-            <span>Restaurant Fee Ledger & Billing ({restaurantLedger.length})</span>
-          </button>
         </div>
 
-        {/* TAB 1: ALL TRANSACTIONS TABLE */}
+        {/* TAB 1: RESTAURANT EARNINGS & ROLLING BALANCE LEDGER */}
+        {activeTab === 'RESTAURANTS' && (
+          <div className="space-y-4">
+            
+            {/* 🔥 ROLLING BALANCE SUMMARY BANNER */}
+            <div className="bg-gradient-to-r from-amber-500 via-amber-600 to-amber-700 text-white rounded-3xl p-6 shadow-md flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2 text-xs font-black uppercase tracking-wider text-amber-100">
+                  <Wallet className="w-4 h-4" /> Live Rolling Balance Tracker
+                </div>
+                <h3 className="text-xl sm:text-2xl font-black tracking-tight">
+                  Outstanding Platform Fee Due: ₹{totalGlobalRollingDue.toFixed(2)}
+                </h3>
+                <p className="text-xs text-amber-100 font-medium">
+                  Total unpaid 12% BiteShare commission across all partner stores. Enter partial or full payments using the FIFO settlement modal.
+                </p>
+              </div>
+
+              <div className="bg-white/10 backdrop-blur-md px-5 py-3 rounded-2xl border border-white/20 text-right shrink-0">
+                <div className="text-[10px] font-bold uppercase text-amber-200">Total Settled Fees</div>
+                <div className="text-xl font-black text-white">₹{totalGlobalSettledFees.toFixed(2)}</div>
+              </div>
+            </div>
+
+            <div className="bg-white rounded-3xl border border-slate-200 shadow-xs overflow-hidden">
+              <div className="p-6 border-b border-slate-100 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+                <div>
+                  <h3 className="text-lg font-black text-slate-900 flex items-center gap-2">
+                    <Store className="w-5 h-5 text-emerald-600" /> Partner Restaurant Ledger
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Real-time breakdown of gross sales, store payouts (88%), settled fees, and current rolling unpaid balance.
+                  </p>
+                </div>
+              </div>
+
+              {restaurantLedger.length === 0 ? (
+                <div className="p-12 text-center space-y-3">
+                  <Store className="w-12 h-12 text-slate-300 mx-auto" />
+                  <h3 className="text-lg font-bold text-slate-800">No partner restaurants found</h3>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="bg-slate-50/80 border-b border-slate-200 text-[11px] font-black uppercase tracking-wider text-slate-500">
+                        <th className="py-4 px-6">Restaurant Store</th>
+                        <th className="py-4 px-6">Owner Name</th>
+                        <th className="py-4 px-6">Contact Details</th>
+                        <th className="py-4 px-6 text-center">Orders</th>
+                        <th className="py-4 px-6 text-right">Gross GMV</th>
+                        <th className="py-4 px-6 text-right">Store Net (88%)</th>
+                        <th className="py-4 px-6 text-right">Total Fee (12%)</th>
+                        <th className="py-4 px-6 text-right">Rolling Due Balance</th>
+                        <th className="py-4 px-6 text-center">Billing & Settlement Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 text-xs font-medium text-slate-700">
+                      {restaurantLedger.map((store) => {
+                        const hasUnpaidDue = store.platformFeeDue > 0;
+                        const isFullyPaid = store.platformFeeDue === 0 && store.settledFeeTotal > 0;
+
+                        return (
+                          <tr key={store.donorId || store.restaurantName} className="hover:bg-slate-50/80 transition">
+                            <td className="py-4 px-6 whitespace-nowrap">
+                              <div className="font-black text-slate-900 text-sm flex items-center gap-1.5">
+                                <Building className="w-4 h-4 text-emerald-600 shrink-0" />
+                                <span>{store.restaurantName}</span>
+                              </div>
+                            </td>
+
+                            <td className="py-4 px-6 whitespace-nowrap font-bold text-slate-800">
+                              <div className="flex items-center gap-1.5">
+                                <User className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                                <span>{store.ownerName}</span>
+                              </div>
+                            </td>
+
+                            <td className="py-4 px-6 whitespace-nowrap">
+                              <div className="font-bold text-slate-800 flex items-center gap-1">
+                                <Mail className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                                <span>{store.email}</span>
+                              </div>
+                              <div className="text-[11px] text-slate-500 flex items-center gap-1 mt-0.5">
+                                <Phone className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                                <span>{store.phone}</span>
+                              </div>
+                            </td>
+
+                            <td className="py-4 px-6 text-center whitespace-nowrap font-bold text-slate-800">
+                              <span className="px-2.5 py-1 bg-slate-100 rounded-xl border border-slate-200">
+                                {store.totalOrders} total ({store.completedOrders} completed)
+                              </span>
+                            </td>
+
+                            <td className="py-4 px-6 text-right whitespace-nowrap font-black text-slate-900">
+                              ₹{store.grossGMV.toFixed(2)}
+                            </td>
+
+                            <td className="py-4 px-6 text-right whitespace-nowrap font-black text-slate-800">
+                              ₹{store.donorEarnings.toFixed(2)}
+                            </td>
+
+                            {/* TOTAL FEE COLUMN */}
+                            <td className="py-4 px-6 text-right whitespace-nowrap font-black text-slate-700">
+                              ₹{store.totalPlatformFee.toFixed(2)}
+                            </td>
+
+                            {/* 🔥 ITEMISED ROLLING BALANCE DUE COLUMN */}
+                            <td className="py-4 px-6 text-right whitespace-nowrap">
+                              {hasUnpaidDue ? (
+                                <div className="space-y-0.5">
+                                  <div className="font-black text-amber-900 bg-amber-100/90 border border-amber-300 px-3 py-1 rounded-xl inline-block text-xs shadow-2xs">
+                                    ₹{store.platformFeeDue.toFixed(2)}
+                                  </div>
+                                  <div className="text-[10px] font-black text-amber-700 uppercase tracking-wider">
+                                    ROLLING UNPAID DUE
+                                  </div>
+                                  {store.settledFeeTotal > 0 && (
+                                    <div className="text-[10px] text-emerald-700 font-bold">
+                                      (₹{store.settledFeeTotal.toFixed(2)} Settled)
+                                    </div>
+                                  )}
+                                </div>
+                              ) : isFullyPaid ? (
+                                <div className="space-y-0.5">
+                                  <div className="font-black text-emerald-900 bg-emerald-100 border border-emerald-300 px-3 py-1 rounded-xl inline-block text-xs">
+                                    ₹{store.settledFeeTotal.toFixed(2)}
+                                  </div>
+                                  <div className="text-[10px] font-black text-emerald-700 uppercase tracking-wider flex items-center justify-end gap-1">
+                                    <CheckCircle className="w-3 h-3 text-emerald-600" /> ALL FEES PAID
+                                  </div>
+                                </div>
+                              ) : (
+                                <span className="text-slate-400 font-bold">₹0.00</span>
+                              )}
+                            </td>
+
+                            {/* Action Buttons Column */}
+                            <td className="py-4 px-6 text-center whitespace-nowrap">
+                              <div className="flex items-center justify-center gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => setSelectedStoreForEmail(store)}
+                                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-900 text-white font-extrabold text-[11px] rounded-xl transition"
+                                >
+                                  <Send className="w-3 h-3" />
+                                  <span>Invoice</span>
+                                </button>
+
+                                {hasUnpaidDue ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleOpenPaymentModal(store)}
+                                    className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-[11px] rounded-xl shadow-xs transition"
+                                  >
+                                    <CreditCard className="w-3.5 h-3.5" />
+                                    <span>Record Payment / Settle Balance</span>
+                                  </button>
+                                ) : (
+                                  <span className="inline-flex items-center gap-1 px-3 py-1.5 bg-emerald-100 text-emerald-800 font-extrabold text-[11px] rounded-xl border border-emerald-300">
+                                    <CheckCircle className="w-3.5 h-3.5 text-emerald-600" />
+                                    <span>Fully Settled</span>
+                                  </span>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* TAB 2: ALL TRANSACTIONS TABLE */}
         {activeTab === 'TRANSACTIONS' && (
           <div className="space-y-4">
             <div className="bg-white p-4 rounded-3xl border border-slate-200 shadow-xs space-y-4">
@@ -897,168 +1166,155 @@ support@biteshare.in | https://biteshare.in`;
           </div>
         )}
 
-        {/* TAB 2: RESTAURANT EARNINGS & FEE LEDGER */}
-        {activeTab === 'RESTAURANTS' && (
-          <div className="space-y-4">
-            <div className="bg-white rounded-3xl border border-slate-200 shadow-xs overflow-hidden">
-              <div className="p-6 border-b border-slate-100 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
-                <div>
-                  <h3 className="text-lg font-black text-slate-900 flex items-center gap-2">
-                    <Store className="w-5 h-5 text-emerald-600" /> Restaurant Earnings & Fee Ledger
-                  </h3>
-                  <p className="text-xs text-slate-500 mt-0.5">
-                    Itemized platform fees due per restaurant. Click "Mark Fee Paid" to clear balance while retaining fee records in green.
-                  </p>
+      </div>
+
+      {/* 💳 PARTIAL PAYMENT SETTLEMENT MODAL (FIFO Engine) */}
+      <AnimatePresence>
+        {paymentModalStore && (
+          <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white rounded-3xl max-w-md w-full p-6 sm:p-8 shadow-2xl border border-slate-200 space-y-6 relative my-8"
+            >
+              <button
+                onClick={() => setPaymentModalStore(null)}
+                className="absolute top-5 right-5 p-1.5 text-slate-400 hover:text-slate-600 rounded-full transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+
+              <div className="space-y-1">
+                <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-emerald-100 text-emerald-800 text-xs font-black uppercase tracking-wider rounded-full border border-emerald-200">
+                  <CreditCard className="w-3.5 h-3.5 text-emerald-600" /> Record Partial or Full Payment
+                </div>
+                <h3 className="text-2xl font-black text-slate-900">
+                  {paymentModalStore.restaurantName}
+                </h3>
+                <p className="text-slate-500 text-xs">
+                  Owner: <strong className="text-slate-800">{paymentModalStore.ownerName}</strong>
+                </p>
+              </div>
+
+              {/* Total Unpaid Rolling Balance Display */}
+              <div className="bg-amber-50 rounded-2xl p-4 border border-amber-200 space-y-1.5 text-xs">
+                <div className="flex justify-between items-center text-amber-900 font-bold">
+                  <span>Current Unpaid Rolling Due:</span>
+                  <span className="text-lg font-black text-amber-900">₹{paymentModalStore.platformFeeDue.toFixed(2)}</span>
+                </div>
+                <p className="text-[10px] text-amber-700 leading-relaxed font-medium">
+                  Enter the payment amount received from the store. The system will mark the oldest orders paid first (First-In, First-Out) and carry forward any remaining balance.
+                </p>
+              </div>
+
+              {/* Custom Payment Amount Input Field */}
+              <div className="space-y-2">
+                <label className="block text-xs font-black uppercase tracking-wider text-slate-700">
+                  Payment Received (₹)
+                </label>
+                <div className="relative">
+                  <IndianRupee className="w-5 h-5 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="1"
+                    max={paymentModalStore.platformFeeDue}
+                    value={paymentInputAmount}
+                    onChange={(e) => setPaymentInputAmount(e.target.value)}
+                    placeholder="Enter paid amount (e.g. 100)"
+                    className="w-full pl-11 pr-4 py-3 rounded-2xl border border-slate-300 focus:ring-2 focus:ring-emerald-500 outline-none text-base font-black text-slate-900 bg-slate-50"
+                  />
+                </div>
+
+                {/* Quick Select Buttons */}
+                <div className="flex items-center gap-1.5 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => setPaymentInputAmount(paymentModalStore.platformFeeDue.toFixed(2))}
+                    className="px-3 py-1 bg-slate-100 hover:bg-slate-200 text-slate-800 font-extrabold text-[10px] rounded-lg border border-slate-200 transition"
+                  >
+                    Full Amount (₹{paymentModalStore.platformFeeDue.toFixed(2)})
+                  </button>
+                  {paymentModalStore.platformFeeDue > 100 && (
+                    <button
+                      type="button"
+                      onClick={() => setPaymentInputAmount('100')}
+                      className="px-3 py-1 bg-slate-100 hover:bg-slate-200 text-slate-800 font-extrabold text-[10px] rounded-lg border border-slate-200 transition"
+                    >
+                      ₹100
+                    </button>
+                  )}
+                  {paymentModalStore.platformFeeDue > 50 && (
+                    <button
+                      type="button"
+                      onClick={() => setPaymentInputAmount('50')}
+                      className="px-3 py-1 bg-slate-100 hover:bg-slate-200 text-slate-800 font-extrabold text-[10px] rounded-lg border border-slate-200 transition"
+                    >
+                      ₹50
+                    </button>
+                  )}
                 </div>
               </div>
 
-              {restaurantLedger.length === 0 ? (
-                <div className="p-12 text-center space-y-3">
-                  <Store className="w-12 h-12 text-slate-300 mx-auto" />
-                  <h3 className="text-lg font-bold text-slate-800">No partner restaurants found</h3>
-                </div>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left border-collapse">
-                    <thead>
-                      <tr className="bg-slate-50/80 border-b border-slate-200 text-[11px] font-black uppercase tracking-wider text-slate-500">
-                        <th className="py-4 px-6">Restaurant Store</th>
-                        <th className="py-4 px-6">Owner Name</th>
-                        <th className="py-4 px-6">Contact Email & Phone</th>
-                        <th className="py-4 px-6 text-center">Orders</th>
-                        <th className="py-4 px-6 text-right">Gross GMV</th>
-                        <th className="py-4 px-6 text-right">Store Net (88%)</th>
-                        <th className="py-4 px-6 text-right">Fee Status & Amount (12%)</th>
-                        <th className="py-4 px-6 text-center">Billing & Settlement Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100 text-xs font-medium text-slate-700">
-                      {restaurantLedger.map((store) => {
-                        const hasUnpaidDue = store.platformFeeDue > 0;
-                        const isFullyPaid = store.platformFeeDue === 0 && store.settledFeeTotal > 0;
-
-                        return (
-                          <tr key={store.donorId || store.restaurantName} className="hover:bg-slate-50/80 transition">
-                            <td className="py-4 px-6 whitespace-nowrap">
-                              <div className="font-black text-slate-900 text-sm flex items-center gap-1.5">
-                                <Building className="w-4 h-4 text-emerald-600 shrink-0" />
-                                <span>{store.restaurantName}</span>
-                              </div>
-                            </td>
-
-                            <td className="py-4 px-6 whitespace-nowrap font-bold text-slate-800">
-                              <div className="flex items-center gap-1.5">
-                                <User className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                                <span>{store.ownerName}</span>
-                              </div>
-                            </td>
-
-                            <td className="py-4 px-6 whitespace-nowrap">
-                              <div className="font-bold text-slate-800 flex items-center gap-1">
-                                <Mail className="w-3 h-3 text-slate-400 shrink-0" />
-                                <span>{store.email}</span>
-                              </div>
-                              <div className="text-[11px] text-slate-500 flex items-center gap-1 mt-0.5">
-                                <Phone className="w-3 h-3 text-slate-400 shrink-0" />
-                                <span>{store.phone}</span>
-                              </div>
-                            </td>
-
-                            <td className="py-4 px-6 text-center whitespace-nowrap font-bold text-slate-800">
-                              <span className="px-2.5 py-1 bg-slate-100 rounded-xl border border-slate-200">
-                                {store.totalOrders} total ({store.completedOrders} completed)
-                              </span>
-                            </td>
-
-                            <td className="py-4 px-6 text-right whitespace-nowrap font-black text-slate-900">
-                              ₹{store.grossGMV.toFixed(2)}
-                            </td>
-
-                            <td className="py-4 px-6 text-right whitespace-nowrap font-black text-slate-800">
-                              ₹{store.donorEarnings.toFixed(2)}
-                            </td>
-
-                            {/* 🎨 UPDATED FEE DUE COLUMN: Shows exact amount with color coding */}
-                            <td className="py-4 px-6 text-right whitespace-nowrap">
-                              {hasUnpaidDue ? (
-                                <div className="space-y-0.5">
-                                  <div className="font-black text-amber-900 bg-amber-100/90 border border-amber-300 px-3 py-1 rounded-xl inline-block text-xs">
-                                    ₹{store.platformFeeDue.toFixed(2)}
-                                  </div>
-                                  <div className="text-[10px] font-black text-amber-700 uppercase tracking-wider">
-                                    UNPAID FEE DUE
-                                  </div>
-                                  {store.settledFeeTotal > 0 && (
-                                    <div className="text-[10px] text-emerald-700 font-bold">
-                                      (₹{store.settledFeeTotal.toFixed(2)} Paid)
-                                    </div>
-                                  )}
-                                </div>
-                              ) : isFullyPaid ? (
-                                <div className="space-y-0.5">
-                                  <div className="font-black text-emerald-900 bg-emerald-100 border border-emerald-300 px-3 py-1 rounded-xl inline-block text-xs">
-                                    ₹{store.settledFeeTotal.toFixed(2)}
-                                  </div>
-                                  <div className="text-[10px] font-black text-emerald-700 uppercase tracking-wider flex items-center justify-end gap-1">
-                                    <CheckCircle className="w-3 h-3 text-emerald-600" /> PAID
-                                  </div>
-                                </div>
-                              ) : (
-                                <span className="text-slate-400 font-bold">₹0.00</span>
-                              )}
-                            </td>
-
-                            {/* Action Buttons Column */}
-                            <td className="py-4 px-6 text-center whitespace-nowrap">
-                              <div className="flex items-center justify-center gap-2">
-                                <button
-                                  type="button"
-                                  onClick={() => setSelectedStoreForEmail(store)}
-                                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-900 text-white font-extrabold text-[11px] rounded-xl transition"
-                                >
-                                  <Send className="w-3 h-3" />
-                                  <span>Invoice</span>
-                                </button>
-
-                                {hasUnpaidDue ? (
-                                  <button
-                                    type="button"
-                                    onClick={() => handleMarkFeeAsPaid(store)}
-                                    disabled={settlingStoreId === store.donorId}
-                                    className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-[11px] rounded-xl shadow-xs transition disabled:opacity-50"
-                                  >
-                                    {settlingStoreId === store.donorId ? (
-                                      <>
-                                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                                        <span>Settling...</span>
-                                      </>
-                                    ) : (
-                                      <>
-                                        <Check className="w-3.5 h-3.5" />
-                                        <span>Mark Fee Paid</span>
-                                      </>
-                                    )}
-                                  </button>
-                                ) : (
-                                  <span className="inline-flex items-center gap-1 px-3 py-1.5 bg-emerald-100 text-emerald-800 font-extrabold text-[11px] rounded-xl border border-emerald-300">
-                                    <CheckCircle className="w-3.5 h-3.5 text-emerald-600" />
-                                    <span>All Fees Settled</span>
-                                  </span>
-                                )}
-                              </div>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
+              {/* Calculation Preview */}
+              {Number(paymentInputAmount) > 0 && (
+                <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs space-y-1 font-semibold text-slate-600">
+                  <div className="flex justify-between">
+                    <span>Amount Being Paid:</span>
+                    <span className="font-bold text-emerald-700">₹{Number(paymentInputAmount).toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between border-t border-slate-200 pt-1">
+                    <span>New Remaining Rolling Balance:</span>
+                    <span className="font-black text-amber-800">
+                      ₹{Math.max(0, paymentModalStore.platformFeeDue - Number(paymentInputAmount)).toFixed(2)}
+                    </span>
+                  </div>
                 </div>
               )}
-            </div>
+
+              {/* Action Buttons */}
+              <div className="flex items-center gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setPaymentModalStore(null)}
+                  className="w-1/3 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-extrabold text-xs rounded-2xl transition"
+                >
+                  Cancel
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    handleSettleDonorFeesFIFO(
+                      paymentModalStore.donorId,
+                      Number(paymentInputAmount)
+                    )
+                  }
+                  disabled={
+                    settlingStoreId === paymentModalStore.donorId ||
+                    !paymentInputAmount ||
+                    Number(paymentInputAmount) <= 0
+                  }
+                  className="w-2/3 py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs rounded-2xl shadow-md transition flex items-center justify-center gap-2 disabled:opacity-50"
+                >
+                  {settlingStoreId === paymentModalStore.donorId ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                      <span>Settling FIFO...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Check className="w-4 h-4" />
+                      <span>Confirm & Settle Payment</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </motion.div>
           </div>
         )}
-
-      </div>
+      </AnimatePresence>
 
       {/* 📧 FEE PAYMENT REQUEST & BILLING INVOICE MODAL */}
       <AnimatePresence>
@@ -1103,7 +1359,7 @@ support@biteshare.in | https://biteshare.in`;
                   <span className="font-bold text-slate-900">₹{selectedStoreForEmail.donorEarnings.toFixed(2)}</span>
                 </div>
                 <div className="flex justify-between text-emerald-800 font-extrabold text-sm pt-2 border-t border-slate-200">
-                  <span>BiteShare Fee (12%):</span>
+                  <span>Current Rolling Due Fee (12%):</span>
                   <span className="text-base text-emerald-700 font-black">
                     ₹{(selectedStoreForEmail.platformFeeDue > 0 ? selectedStoreForEmail.platformFeeDue : selectedStoreForEmail.settledFeeTotal).toFixed(2)}
                   </span>
@@ -1160,12 +1416,13 @@ support@biteshare.in | https://biteshare.in`;
                     <button
                       type="button"
                       onClick={() => {
-                        handleMarkFeeAsPaid(selectedStoreForEmail);
+                        const store = selectedStoreForEmail;
                         setSelectedStoreForEmail(null);
+                        handleOpenPaymentModal(store);
                       }}
                       className="text-xs font-extrabold text-emerald-700 hover:underline flex items-center gap-1"
                     >
-                      <CheckCircle className="w-3.5 h-3.5" /> Direct Mark Fee as Paid (Clear Balance)
+                      <CreditCard className="w-3.5 h-3.5" /> Record Fee Payment Directly
                     </button>
                   )}
 

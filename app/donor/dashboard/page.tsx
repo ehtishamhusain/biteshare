@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -26,6 +26,9 @@ export default function DonorDashboardPage() {
 
   // Store profile state
   const [donorProfile, setDonorProfile] = useState<any>(null);
+
+  // Focus ref for smooth field navigation
+  const descriptionRef = useRef<HTMLTextAreaElement>(null);
 
   // Food Form States
   const [title, setTitle] = useState('');
@@ -397,6 +400,12 @@ export default function DonorDashboardPage() {
                   required
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      descriptionRef.current?.focus();
+                    }
+                  }}
                   placeholder="e.g. Fresh Veg Biryani & Paneer Meal Trays"
                   className="w-full px-4 py-3 rounded-2xl border border-slate-200 focus:ring-2 focus:ring-emerald-500 outline-none text-xs sm:text-sm text-slate-800 bg-slate-50/50"
                 />
@@ -424,6 +433,7 @@ export default function DonorDashboardPage() {
                 Food Description & Packaging Details
               </label>
               <textarea
+                ref={descriptionRef}
                 rows={2}
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
