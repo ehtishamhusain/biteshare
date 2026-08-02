@@ -8,10 +8,36 @@ import ProfileGuard from '@/components/ProfileGuard';
 const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
-  title: 'BiteShare - Hyper-Local Surplus Food Redistribution Network',
-  description: 'Connect local business surplus food with community members and shelters in real time.',
-  icons: {
-    icon: '/icon.svg',
+  metadataBase: new URL('https://biteshare.in'),
+  title: {
+    default: 'BiteShare - Hyper-Local Food Redistribution Network',
+    template: '%s | BiteShare',
+  },
+  description:
+    'Connect with local food donors, restaurants, and shelters to rescue fresh surplus food in real time.',
+  keywords: [
+    'food waste',
+    'surplus food',
+    'hunger',
+    'biteshare',
+    'food redistribution',
+    'sustainability',
+    'ESG',
+    'CSR food rescue',
+  ],
+  authors: [{ name: 'BiteShare Team' }],
+  openGraph: {
+    title: 'BiteShare - Hyper-Local Food Redistribution Network',
+    description:
+      'Rescue fresh surplus food near you, prevent food waste in real time, and take a step toward zero hunger.',
+    url: 'https://biteshare.in',
+    siteName: 'BiteShare',
+    locale: 'en_IN',
+    type: 'website',
+  },
+  robots: {
+    index: true,
+    follow: true,
   },
 };
 
