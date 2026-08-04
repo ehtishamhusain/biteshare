@@ -23,8 +23,7 @@ export async function POST(req: Request) {
       .upsert(
         { email: cleanEmail, created_at: new Date().toISOString() },
         { onConflict: 'email' }
-      )
-      .select();
+      );
 
     if (dbError) {
       console.error('Supabase DB Insert Error:', dbError);
