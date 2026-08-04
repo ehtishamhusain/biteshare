@@ -1,8 +1,14 @@
 import { NextResponse } from 'next/server';
 import { Resend } from 'resend';
-import { supabase } from '@/lib/supabase';
+import { createClient } from '@supabase/supabase-js';
 
 const resend = new Resend(process.env.RESEND_API_KEY);
+
+// 🛡️ Create a server-side Supabase client using Service Role (or Anon Key fallback)
+const supabaseAdmin = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+);
 
 export async function POST(req: Request) {
   try {
@@ -17,8 +23,8 @@ export async function POST(req: Request) {
 
     const cleanEmail = email.trim().toLowerCase();
 
-    // 1. Save subscriber to Supabase database
-    const { error: dbError } = await supabase
+    // 1. Save subscriber to Supabase database using supabaseAdmin
+    const { error: dbError } = await supabaseAdmin
       .from('subscribers')
       .upsert(
         { email: cleanEmail, created_at: new Date().toISOString() },
