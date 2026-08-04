@@ -223,6 +223,7 @@ export default function ContactPage() {
             </div>
 
             {/* Commitment Badge Box */}
+            {/*
             <div className="bg-gradient-to-br from-emerald-600 to-teal-700 p-6 sm:p-8 rounded-3xl text-white space-y-3 shadow-md relative overflow-hidden">
               <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/30 border border-emerald-400/30 text-[11px] font-black uppercase tracking-wider">
                 <ShieldCheck className="w-3.5 h-3.5 text-emerald-200" /> Fast Response
@@ -234,7 +235,7 @@ export default function ContactPage() {
                 Whether you are a bakery trying to post surplus meals or a local shelter needing assistance, our local logistics team monitors incoming queries every day.
               </p>
             </div>
-
+            */}
           </motion.div>
 
           {/* RIGHT SIDE: Interactive Message Form */}

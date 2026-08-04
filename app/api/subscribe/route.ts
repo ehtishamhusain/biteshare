@@ -54,34 +54,53 @@ export async function POST(req: Request) {
               Bite<span style="color: #059669;">Share</span>
             </h1>
             <p style="color: #64748b; font-size: 13px; margin-top: 6px; margin-bottom: 0; font-weight: 500;">
-              Hyper-Local Surplus Food Redistribution Network
+              Hyper-Local Food Redistribution Network
             </p>
           </div>
 
           <div style="padding: 24px 0;">
-            <h2 style="font-size: 18px; color: #0f172a; margin-bottom: 12px; font-weight: 800;">Thanks for subscribing! 🎉</h2>
-            <p style="font-size: 15px; line-height: 1.6; color: #334155;">
-              Thank you for joining our community! We are on a mission to stop local food waste by connecting surplus food from restaurants and bakeries directly with community members and shelters.
+            <h2 style="font-size: 19px; color: #0f172a; margin-bottom: 14px; font-weight: 800; text-align: center;">
+              Thanks for subscribing! 🎉
+            </h2>
+            
+            <p style="font-size: 14px; line-height: 1.65; color: #334155; margin-bottom: 16px;">
+              At <strong>BiteShare</strong>, our primary mission is to ensure that no one goes to bed hungry. We are building a platform that connects surplus food from restaurants and bakeries directly with community members and shelters, reducing food waste while making meals more accessible to those who need them most.
             </p>
-            <p style="font-size: 15px; line-height: 1.6; color: #334155;">
-              You are officially on our list! We will keep you updated on platform milestones, feature releases, and community updates.
+            
+            <p style="font-size: 14px; line-height: 1.65; color: #334155; margin-bottom: 20px;">
+              You are now part of this journey. We’ll keep you updated on platform milestones, feature releases, and community impact as we work together toward zero hunger and zero food waste.
             </p>
 
-            <div style="margin: 28px 0; padding: 20px; background-color: #f0fdf4; border-radius: 14px; border: 1px solid #bbf7d0; text-align: center;">
-              <p style="margin: 0; font-size: 15px; color: #166534; font-weight: 700;">
-                Want to check live surplus food listings?
+            <div style="margin: 28px 0; padding: 22px 20px; background-color: #f0fdf4; border-radius: 16px; border: 1px solid #bbf7d0; text-align: center;">
+              <p style="margin: 0 0 6px 0; font-size: 15px; color: #166534; font-weight: 800;">
+                Get Started Today
               </p>
-              <p style="margin: 8px 0 16px 0; font-size: 13px; color: #15803d;">
-                You don't have to wait—explore available surplus bundles in real-time on our live feed.
+              <p style="margin: 0 0 18px 0; font-size: 13px; color: #15803d; line-height: 1.4;">
+                Whether you want to share surplus food or claim fresh meals, pick your role below:
               </p>
-              <a href="${baseUrl}/feed" style="background-color: #059669; color: #ffffff; padding: 10px 22px; border-radius: 10px; font-weight: bold; text-decoration: none; display: inline-block; font-size: 14px; box-shadow: 0 2px 4px rgba(5, 150, 105, 0.2);">
-                Explore Available Food
-              </a>
+
+              <div style="text-align: center;">
+                
+                <a 
+                  href="${baseUrl}/signup" 
+                  style="background-color: #059669; color: #ffffff; padding: 12px 18px; border-radius: 12px; font-weight: 800; text-decoration: none; display: inline-block; font-size: 13px; margin: 5px; box-shadow: 0 2px 4px rgba(5, 150, 105, 0.25);"
+                >
+                  🏪 Publish Food
+                </a>
+
+                <a 
+                  href="${baseUrl}/feed" 
+                  style="background-color: #0f172a; color: #ffffff; padding: 12px 18px; border-radius: 12px; font-weight: 800; text-decoration: none; display: inline-block; font-size: 13px; margin: 5px; box-shadow: 0 2px 4px rgba(15, 23, 42, 0.2);"
+                >
+                  🍲 Explore Feed
+                </a>
+
+              </div>
             </div>
           </div>
 
           <div style="padding-top: 20px; border-top: 1px solid #f1f5f9; text-align: center; font-size: 12px; color: #94a3b8;">
-            <p style="margin: 0 0 8px 0;">With gratitude,<br/><strong style="color: #475569;">The BiteShare Team</strong></p>
+            <p style="margin: 0 0 8px 0;">Together toward zero hunger & zero food waste,<br/><strong style="color: #475569;">The BiteShare Team</strong></p>
             <p style="margin: 0 0 12px 0;"><a href="${baseUrl}" style="color: #059669; text-decoration: none; font-weight: 600;">${baseUrl}</a></p>
             
             <p style="margin: 12px 0 0 0; font-size: 11px; color: #94a3b8;">
