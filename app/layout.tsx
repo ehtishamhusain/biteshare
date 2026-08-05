@@ -27,10 +27,12 @@ export const metadata: Metadata = {
   ],
   authors: [{ name: 'BiteShare Team' }],
   
-  // 🖼️ Favicon & Icon metadata for Google Search and Browser Tabs
   icons: {
-    icon: '/icon.png',
-    shortcut: '/icon.png',
+    icon: [
+      { url: '/icon.svg', type: 'image/svg+xml' },
+      { url: '/icon.png', type: 'image/png' },
+    ],
+    shortcut: '/icon.svg',
     apple: '/apple-icon.png',
   },
 
