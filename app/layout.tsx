@@ -26,6 +26,14 @@ export const metadata: Metadata = {
     'CSR food rescue',
   ],
   authors: [{ name: 'BiteShare Team' }],
+  
+  // 🖼️ Favicon & Icon metadata for Google Search and Browser Tabs
+  icons: {
+    icon: '/icon.png',
+    shortcut: '/icon.png',
+    apple: '/apple-icon.png',
+  },
+
   openGraph: {
     title: 'BiteShare - Hyper-Local Food Redistribution Network',
     description:
